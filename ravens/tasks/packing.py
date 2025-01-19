@@ -63,7 +63,7 @@ class PackingBoxes(Task):
       if np.sum(split) == 0:
         bboxes.append(node.bbox)
         return
-      split = np.float32(split) / np.sum(split)#每个轴被选中的概率
+      split = np.float32(split) / np.sum(split)
       split_axis = np.random.choice(range(len(split)), 1, p=split)[0]
 
       # Split along chosen axis and create 2 children
@@ -106,7 +106,7 @@ class PackingBoxes(Task):
       urdf = self.fill_template(object_template, {'DIM': size})
       box_id = env.add_object(urdf, pose)
       os.remove(urdf)
-      object_ids.append((box_id, (0, None)))#后面的tuple表示什么？
+      object_ids.append((box_id, (0, None)))
       icolor = np.random.choice(range(len(colors)), 1).squeeze()
       p.changeVisualShape(box_id, -1, rgbaColor=colors[icolor] + [1])
       object_points[box_id] = self.get_object_points(box_id)
@@ -121,7 +121,7 @@ class PackingBoxes(Task):
       object_volumes.append(np.prod(np.array(object_size) * 100))
       pose = self.get_random_pose(env, object_size)
       p.resetBasePositionAndOrientation(object_id, pose[0], pose[1])
-      true_poses.append(true_pose)#TODO: true_pose是什么形式的
+      true_poses.append(true_pose)
       # self.goal['places'][object_id] = true_pose
       # symmetry = 0  # zone-evaluation: symmetry does not matter
       # self.goal['steps'].append({object_id: (symmetry, [object_id])})

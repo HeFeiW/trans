@@ -55,7 +55,9 @@ def main(unused_argv):
   # Initialize scripted oracle agent and dataset.
   agent = task.oracle(env, steps_per_seg=FLAGS.steps_per_seg)
   dataset = Dataset(os.path.join(FLAGS.data_dir, f'{FLAGS.task}-{task.mode}'))
-
+    #debug
+  print(f"Dataset_path:{os.path.join(FLAGS.data_dir, f'{FLAGS.task}-{task.mode}')}")
+  print(f"n_episodes:{dataset.n_episodes}")
   # Train seeds are even and test seeds are odd.
   seed = dataset.max_seed
   if seed < 0:
