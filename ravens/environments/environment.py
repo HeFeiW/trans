@@ -27,7 +27,7 @@ from ravens.tasks import cameras
 from ravens.tasks.grippers import Spatula
 from ravens.utils import pybullet_utils
 from ravens.utils import utils
-
+from ravens.tasks.packing_with_error import PackingWithError
 import pybullet as p
 
 
@@ -219,7 +219,7 @@ class Environment(gym.Env):
     # Re-enable rendering.
     p.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 1)
 
-    obs, _, _, _ = self.step()
+    obs, _, _, _, _ = self.step()
     return obs
 
   def step(self, action=None):
@@ -238,6 +238,8 @@ class Environment(gym.Env):
       # so that we don't break the Gym API contract.
       if timeout:
         obs = self._get_obs()
+        if self.task==PackingWithError:
+            return obs, 0.0, True, self.info, "timeout"
         return obs, 0.0, True, self.info # obs,reward,done,info
 
     # Step simulator asynchronously until objects settle.
@@ -247,13 +249,15 @@ class Environment(gym.Env):
     # Get task rewards.
     reward, info = self.task.reward() if action is not None else (0, {})
     done = self.task.done()
-
     # Add ground truth robot state into info.
     info.update(self.info)
 
     obs = self._get_obs()
 
-    return obs, reward, done, info
+    obj_ids = self.obj_ids['rigid']
+    obj_poses = [{"obj_id":obj_id,"pose":p.getBasePositionAndOrientation(obj_id)} for obj_id in obj_ids]
+    feedback = self.task.feedback(obj_poses)
+    return obs, reward, done, info, feedback
 
   def close(self):
     if self._egl_plugin is not None:
@@ -269,29 +273,30 @@ class Environment(gym.Env):
     return color
   # WHF added func
   def save_image(self,config):
-    self.img_cnt += 1
-    img = p.getCameraImage(config['image_size'][1], config['image_size'][0], shadow = False, renderer=p.ER_BULLET_HARDWARE_OPENGL)
+    pass
+    # self.img_cnt += 1
+    # img = p.getCameraImage(config['image_size'][1], config['image_size'][0], shadow = False, renderer=p.ER_BULLET_HARDWARE_OPENGL)
 
-    rgb_opengl = (np.reshape(img[2], (config['image_size'][0], config['image_size'][1], 4))).astype(np.uint8)
-    rgb_opengl = rgb_opengl[:,:,:3]
-    depth_buffer_opengl = np.reshape(img[3], (config['image_size'][0], config['image_size'][1]))
-    znear, zfar = config['zrange']
-    #depth_opengl = zfar * znear / (zfar - (zfar - znear) * depth_buffer_opengl)
-    depth_opengl1 = depth_buffer_opengl[:,:,np.newaxis] * np.array([[1,1,1]]).astype(np.uint8)
-    #seg_opengl = np.reshape(img[4], [config['image_size'][0], config['image_size'][1]]) * 1. / 255.
-    from PIL import Image
-    import matplotlib as plt
-    #print(f"rgbim:{rgb_opengl}")
-    #print(f"depthim:{depth_opengl1}")
-    rgbim = Image.fromarray(rgb_opengl,mode="RGB")
-    #depthim = Image.fromarray(depth_opengl1 + 1)#+1是为了debug
-    # rgbim_no_alpha = rgbim.convert('RGB')
-    print("saving_rgb")
-    # rgbim_no_alpha.save(f'my_images/image_rgb_{self.img_cnt}.jpg')
-    rgbim.save(f'my_images/image_rgb_{self.img_cnt}.jpg')
-    #depthim.save(f'my_images/image_depth_{self.img_cnt}.jpg')
-    print("[[imageSaved]]")
-    # plt.show()
+    # rgb_opengl = (np.reshape(img[2], (config['image_size'][0], config['image_size'][1], 4))).astype(np.uint8)
+    # rgb_opengl = rgb_opengl[:,:,:3]
+    # depth_buffer_opengl = np.reshape(img[3], (config['image_size'][0], config['image_size'][1]))
+    # znear, zfar = config['zrange']
+    # #depth_opengl = zfar * znear / (zfar - (zfar - znear) * depth_buffer_opengl)
+    # depth_opengl1 = depth_buffer_opengl[:,:,np.newaxis] * np.array([[1,1,1]]).astype(np.uint8)
+    # #seg_opengl = np.reshape(img[4], [config['image_size'][0], config['image_size'][1]]) * 1. / 255.
+    # from PIL import Image
+    # import matplotlib as plt
+    # #print(f"rgbim:{rgb_opengl}")
+    # #print(f"depthim:{depth_opengl1}")
+    # rgbim = Image.fromarray(rgb_opengl,mode="RGB")
+    # #depthim = Image.fromarray(depth_opengl1 + 1)#+1是为了debug
+    # # rgbim_no_alpha = rgbim.convert('RGB')
+    # print("saving_rgb")
+    # # rgbim_no_alpha.save(f'my_images/image_rgb_{self.img_cnt}.jpg')
+    # rgbim.save(f'my_images/image_rgb_{self.img_cnt}.jpg')
+    # #depthim.save(f'my_images/image_depth_{self.img_cnt}.jpg')
+    # print("[[imageSaved]]")
+    # # plt.show()
   def render_camera(self, config):
     """Render RGB-D image with specified camera configuration."""
 # TODO 相机渲染设置
@@ -533,7 +538,10 @@ class ContinuousEnvironment(Environment):
       # so that we don't break the Gym API contract.
       if timeout:
         obs = self._get_obs()
-        return obs, 0.0, True, self.info
+        # if self.task==PackingWithError:
+        #     feedback = self.task.feedback()
+        #     return obs, 0.0, True, self.info, feedback
+        return obs, 0.0, True, self.info, "timeout"
 
     # Step simulator asynchronously until objects settle.
     while not self.is_static:
@@ -551,7 +559,9 @@ class ContinuousEnvironment(Environment):
     info.update(self.info)
 
     obs = self._get_obs()
-
-    return obs, reward, done, info
+    obj_poses = self.task.obj_poses
+    feedback = self.task.feedback(true_poses)
+    return obs, reward, done, info, feedback
   
+
 

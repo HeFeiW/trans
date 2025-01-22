@@ -77,16 +77,17 @@ def main(unused_argv):
     env.set_task(task)
     obs = env.reset()
     info = None
+    feedback = None
     reward = 0
     for _ in range(max_steps):
       act = agent.act(obs, info)
-      episode.append((obs, act, reward, info))
-      obs, reward, done, info = env.step(act)
+      episode.append((obs, act, reward, info, feedback))
+      obs, reward, done, info, feedback = env.step(act)
       total_reward += reward
       print(f'Total Reward: {total_reward} Done: {done}')
       if done:
         break
-    episode.append((obs, None, reward, info))
+    episode.append((obs, None, reward, info, feedback))
 
     # Only save completed demonstrations.
     # TODO(andyzeng): add back deformable logic.

@@ -22,7 +22,7 @@ from ravens.tasks.task import Task
 from ravens.utils import utils
 
 import pybullet as p
-from ravens.tasks.QuadTree import QuadTree
+from ravens.tasks.QuadTree import QuadTreeNode
 
 class PackingWithError(Task):
   """Packing task."""
@@ -134,6 +134,7 @@ class PackingWithError(Task):
     #.    np.argsort(-1 * np.array(object_volumes))
     # ]
     # 打乱true_poses
+    self.true_poses=true_poses
     np.random.shuffle(true_poses)
     # print(true_poses)
     # 把goals改为栈实现
@@ -141,8 +142,8 @@ class PackingWithError(Task):
         object_ids, np.eye(len(object_ids)), true_poses, False, True, 'zone',
         (object_points, [(zone_pose, zone_size)]), 1))
 
-  def feedback(self, true_poses):
-    def is_laid_flat(true_pose, tolerance=0.1):
+  def feedback(self, obj_poses):
+    def is_laid_flat(obj_pose, tolerance=0.1):
       """
       通过检查上表面法向量判断物块是否平放
       Args:
@@ -152,7 +153,7 @@ class PackingWithError(Task):
           bool: 是否平放
       """
       # 获取旋转矩阵
-      quaternion = true_pose[1]
+      quaternion = obj_pose[1]
       rot_matrix = p.getMatrixFromQuaternion(quaternion)
       rot_matrix = np.array(rot_matrix).reshape(3, 3)
       
@@ -164,10 +165,10 @@ class PackingWithError(Task):
       
       # 如果余弦值接近1或-1，说明物块平放
       return cos_angle > (1 - tolerance)
-    def is_on_top_of_others(true_pose, tolerance=0.1):
-      return true_pose[0][2] > 0.01
-    laid_flat = [{'obj_id': true_pose['obj_id'], 'is_laid_flat': is_laid_flat(true_pose['pose'])} for true_pose in true_poses]
-    on_top_of_others = [{'obj_id': true_pose['obj_id'], 'is_on_top_of_others': is_on_top_of_others(true_pose['pose'])} for true_pose in true_poses]
+    def is_on_top_of_others(obj_pose, tolerance=0.1):
+      return obj_pose[0][2] > 0.01
+    laid_flat = [{'obj_id': obj_pose['obj_id'], 'is_laid_flat': is_laid_flat(obj_pose['pose'])} for obj_pose in obj_poses]
+    on_top_of_others = [{'obj_id': obj_pose['obj_id'], 'is_on_top_of_others': is_on_top_of_others(obj_pose['pose'])} for obj_pose in obj_poses]
     if np.sum([laid_flat['is_laid_flat'] for laid_flat in laid_flat]) == len(laid_flat) and np.sum([on_top_of_others['is_on_top_of_others'] for on_top_of_others in on_top_of_others]) == len(on_top_of_others):
       return 'success'
     else:

@@ -1,1 +1,7 @@
 /venv/
+/my_images/
+*.pkl
+*.json
+/build/
+/dist/
+/ravens.egg-info/

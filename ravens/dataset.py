@@ -62,13 +62,14 @@ class Dataset:
       episode: list of (obs, act, reward, info) tuples.
     """
     color, depth, action, reward, info = [], [], [], [], []
-    for obs, act, r, i in episode:
+    feedback = []
+    for obs, act, r, i, f in episode:
       color.append(obs['color'])
       depth.append(obs['depth'])
       action.append(act)
       reward.append(r)
       info.append(i)
-
+      feedback.append(f)
     color = np.uint8(color)
     depth = np.float32(depth)
 
@@ -85,7 +86,7 @@ class Dataset:
     dump(action, 'action')
     dump(reward, 'reward')
     dump(info, 'info')
-
+    dump(feedback, 'feedback')
     self.n_episodes += 1
     self.max_seed = max(self.max_seed, seed)
 
@@ -136,12 +137,12 @@ class Dataset:
         action = load_field(episode_id, 'action', fname)
         reward = load_field(episode_id, 'reward', fname)
         info = load_field(episode_id, 'info', fname)
-
+        feedback = load_field(episode_id, 'feedback', fname)
         # Reconstruct episode.
         episode = []
         for i in range(len(action)):
           obs = {'color': color[i], 'depth': depth[i]} if images else {}
-          episode.append((obs, action[i], reward[i], info[i]))
+          episode.append((obs, action[i], reward[i], info[i], feedback[i]))
         return episode, seed
 
   def sample(self, images=True, cache=False):
