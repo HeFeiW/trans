@@ -48,6 +48,7 @@ class PlaceRedInGreen(Task):
     blocks = []
     block_size = (0.04, 0.04, 0.04)
     block_urdf = 'stacking/block.urdf'
+    #print(f"--n_blocks:{n_blocks}")#TODO:debug whf
     for _ in range(n_blocks):
       block_pose = self.get_random_pose(env, block_size)
       block_id = env.add_object(block_urdf, block_pose)
@@ -56,7 +57,7 @@ class PlaceRedInGreen(Task):
     # Goal: each red block is in a different green bowl.
     self.goals.append((blocks, np.ones((len(blocks), len(bowl_poses))),
                        bowl_poses, False, True, 'pose', None, 1))
-
+    #print(f"--goals.len:{self.goals.len()}")#TODO:debug whf
     # Colors of distractor objects.
     bowl_colors = [utils.COLORS[c] for c in utils.COLORS if c != 'green']
     block_colors = [utils.COLORS[c] for c in utils.COLORS if c != 'red']

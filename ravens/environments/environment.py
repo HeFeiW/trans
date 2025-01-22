@@ -69,7 +69,7 @@ class Environment(gym.Env):
 
     self.pix_size = 0.003125
     self.obj_ids = {'fixed': [], 'rigid': [], 'deformable': []}
-    self.homej = np.array([-1, -0.5, 0.5, -0.5, -0.5, 0]) * np.pi
+    self.homej = np.array([-1, -0.5, 0.5, -0.5, -0.5, 0]) * np.pi # # Initial joint angles (in radians) for UR5 robot, defines the "home" pose
     self.agent_cams = cameras.RealSenseD415.CONFIG
 
     self.assets_root = assets_root
@@ -91,12 +91,12 @@ class Environment(gym.Env):
         high=np.array([0.75, 0.5, 0.28], dtype=np.float32),
         shape=(3,),
         dtype=np.float32)
-    self.action_space = gym.spaces.Dict({
-        'pose0':
+    self.action_space = gym.spaces.Dict({#TODO 只有两种pose？通过哪里的接口来调整具体动作呢？
+        'pose0':# gripping pose
             gym.spaces.Tuple(
-                (self.position_bounds,
-                 gym.spaces.Box(-1.0, 1.0, shape=(4,), dtype=np.float32))),
-        'pose1':
+                (self.position_bounds,# position bounds for the robot's end effector
+                 gym.spaces.Box(-1.0, 1.0, shape=(4,), dtype=np.float32))),# 4-dimensional box for the robot's end effector's orientation
+        'pose1':# release pose
             gym.spaces.Tuple(
                 (self.position_bounds,
                  gym.spaces.Box(-1.0, 1.0, shape=(4,), dtype=np.float32)))
@@ -137,10 +137,10 @@ class Environment(gym.Env):
     p.setAdditionalSearchPath(tempfile.gettempdir())
     p.setTimeStep(1. / hz)
 
-    # If using --disp, move default camera closer to the scene.
+    # If using --disp, move default camera closer to the scene.# TODO why?
     if disp:
-      target = p.getDebugVisualizerCamera()[11]
-      p.resetDebugVisualizerCamera(
+      target = p.getDebugVisualizerCamera()[11]#camera parameters, 11 is the target position
+      p.resetDebugVisualizerCamera(# won't affect how the robot sees the scene
           cameraDistance=1.1,
           cameraYaw=90,
           cameraPitch=-25,
@@ -151,7 +151,7 @@ class Environment(gym.Env):
 
   @property
   def is_static(self):
-    """Return true if objects are no longer moving."""
+    """Return true if objects are no longer moving. Accessed by velocity of objects"""
     v = [np.linalg.norm(p.getBaseVelocity(i)[0])
          for i in self.obj_ids['rigid']]
     return all(np.array(v) < 5e-3)
@@ -178,20 +178,21 @@ class Environment(gym.Env):
 
   def reset(self):
     """Performs common reset functionality for all supported tasks."""
+    self.img_cnt = 0#whf 
     if not self.task:
       raise ValueError('environment task must be set. Call set_task or pass '
                        'the task arg in the environment constructor.')
-    self.obj_ids = {'fixed': [], 'rigid': [], 'deformable': []}
-    p.resetSimulation(p.RESET_USE_DEFORMABLE_WORLD)
-    p.setGravity(0, 0, -9.8)
+    self.obj_ids = {'fixed': [], 'rigid': [], 'deformable': []}# reset the object IDs for each category
+    p.resetSimulation(p.RESET_USE_DEFORMABLE_WORLD)# reset the simulation
+    p.setGravity(0, 0, -9.8)# set the gravity
 
     # Temporarily disable rendering to load scene faster.
     p.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 0)
 
     pybullet_utils.load_urdf(p, os.path.join(self.assets_root, PLANE_URDF_PATH),
-                             [0, 0, -0.001])
+                             [0, 0, -0.001])# load the plane
     pybullet_utils.load_urdf(
-        p, os.path.join(self.assets_root, UR5_WORKSPACE_URDF_PATH), [0.5, 0, 0])
+        p, os.path.join(self.assets_root, UR5_WORKSPACE_URDF_PATH), [0.5, 0, 0])# load the ur5 workspace
 
     # Load UR5 robot arm equipped with suction end effector.
     # TODO(andyzeng): add back parallel-jaw grippers.
@@ -237,7 +238,7 @@ class Environment(gym.Env):
       # so that we don't break the Gym API contract.
       if timeout:
         obs = self._get_obs()
-        return obs, 0.0, True, self.info
+        return obs, 0.0, True, self.info # obs,reward,done,info
 
     # Step simulator asynchronously until objects settle.
     while not self.is_static:
@@ -266,10 +267,34 @@ class Environment(gym.Env):
       raise NotImplementedError('Only rgb_array implemented')
     color, _, _ = self.render_camera(self.agent_cams[0])
     return color
+  # WHF added func
+  def save_image(self,config):
+    self.img_cnt += 1
+    img = p.getCameraImage(config['image_size'][1], config['image_size'][0], shadow = False, renderer=p.ER_BULLET_HARDWARE_OPENGL)
 
+    rgb_opengl = (np.reshape(img[2], (config['image_size'][0], config['image_size'][1], 4))).astype(np.uint8)
+    rgb_opengl = rgb_opengl[:,:,:3]
+    depth_buffer_opengl = np.reshape(img[3], (config['image_size'][0], config['image_size'][1]))
+    znear, zfar = config['zrange']
+    #depth_opengl = zfar * znear / (zfar - (zfar - znear) * depth_buffer_opengl)
+    depth_opengl1 = depth_buffer_opengl[:,:,np.newaxis] * np.array([[1,1,1]]).astype(np.uint8)
+    #seg_opengl = np.reshape(img[4], [config['image_size'][0], config['image_size'][1]]) * 1. / 255.
+    from PIL import Image
+    import matplotlib as plt
+    #print(f"rgbim:{rgb_opengl}")
+    #print(f"depthim:{depth_opengl1}")
+    rgbim = Image.fromarray(rgb_opengl,mode="RGB")
+    #depthim = Image.fromarray(depth_opengl1 + 1)#+1是为了debug
+    # rgbim_no_alpha = rgbim.convert('RGB')
+    print("saving_rgb")
+    # rgbim_no_alpha.save(f'my_images/image_rgb_{self.img_cnt}.jpg')
+    rgbim.save(f'my_images/image_rgb_{self.img_cnt}.jpg')
+    #depthim.save(f'my_images/image_depth_{self.img_cnt}.jpg')
+    print("[[imageSaved]]")
+    # plt.show()
   def render_camera(self, config):
     """Render RGB-D image with specified camera configuration."""
-
+# TODO 相机渲染设置
     # OpenGL camera settings.
     lookdir = np.float32([0, 0, 1]).reshape(3, 1)
     updir = np.float32([0, -1, 0]).reshape(3, 1)
@@ -280,7 +305,7 @@ class Environment(gym.Env):
     lookat = config['position'] + lookdir
     focal_len = config['intrinsics'][0]
     znear, zfar = config['zrange']
-    viewm = p.computeViewMatrix(config['position'], lookat, updir)
+    viewm = p.computeViewMatrix(config['position'], lookat, updir)#TODO 得到观察矩阵
     fovh = (config['image_size'][0] / 2) / focal_len
     fovh = 180 * np.arctan(fovh) * 2 / np.pi
 
@@ -319,7 +344,6 @@ class Environment(gym.Env):
 
     # Get segmentation image.
     segm = np.uint8(segm).reshape(depth_image_size)
-
     return color, depth, segm
 
   @property
@@ -364,11 +388,11 @@ class Environment(gym.Env):
       stepj = currj + v * speed
       gains = np.ones(len(self.joints))
       p.setJointMotorControlArray(
-          bodyIndex=self.ur5,
-          jointIndices=self.joints,
-          controlMode=p.POSITION_CONTROL,
-          targetPositions=stepj,
-          positionGains=gains)
+          bodyIndex=self.ur5,# the robot's body index
+          jointIndices=self.joints,# the robot's joint indices
+          controlMode=p.POSITION_CONTROL,# control mode for the joints， accomplished by PD control
+          targetPositions=stepj,# the target positions for the joints
+          positionGains=gains)# the position gains for the joints
       p.stepSimulation()
     print(f'Warning: movej exceeded {timeout} second timeout. Skipping.')
     return True
@@ -485,7 +509,7 @@ class ContinuousEnvironment(Environment):
 
   def set_task(self, task):
     super().set_task(task)
-
+    # WHF attention: here uses the Spatula end effector
     # Redefine the action-space in case it is a pushing task. At this point, the
     # ee has been instantiated.
     if self.task.ee == Spatula:
@@ -529,3 +553,5 @@ class ContinuousEnvironment(Environment):
     obs = self._get_obs()
 
     return obs, reward, done, info
+  
+

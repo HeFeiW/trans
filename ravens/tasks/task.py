@@ -60,7 +60,7 @@ class Task():
     self.pix_size = 0.003125
     self.bounds = np.array([[0.25, 0.75], [-0.5, 0.5], [0, 0.3]])
 
-    self.goals = []
+    self.goals = []# goals list:each goal is a tuple of (obj_ids, matches, true_poses, replace, rotations, metric, zone_params, max_reward)
     self.progress = 0
     self._rewards = 0
 
@@ -116,7 +116,7 @@ class Task():
 
       # Unpack next goal step.
       objs, matches, targs, replace, rotations, _, _, _ = self.goals[0]
-
+#TODO replace啥意思
       # Match objects to targets without replacement.
       if not replace:
 
@@ -152,7 +152,7 @@ class Task():
         else:
           nn_dists.append(0)
           nn_targets.append(-1)
-      order = np.argsort(nn_dists)[::-1]
+      order = np.argsort(nn_dists)[::-1]#TODO 什么意思
 
       # Filter out matched objects.
       order = [i for i in order if nn_dists[i] > 0]
@@ -174,8 +174,11 @@ class Task():
         return
 
       # Get picking pose.
+      #whf added
+      for config in env.agent_cams:
+        env.save_image(config) 
       pick_prob = np.float32(pick_mask)
-      pick_pix = utils.sample_distribution(pick_prob)
+      pick_pix = utils.sample_distribution(pick_prob)#TODO 什么意思
       # For "deterministic" demonstrations on insertion-easy, use this:
       # pick_pix = (160,80)
       pick_pos = utils.pix_to_xyz(pick_pix, hmap,

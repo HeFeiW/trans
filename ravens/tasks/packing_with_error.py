@@ -22,9 +22,9 @@ from ravens.tasks.task import Task
 from ravens.utils import utils
 
 import pybullet as p
+from ravens.tasks.QuadTree import QuadTree
 
-
-class PackingBoxes(Task):
+class PackingWithError(Task):
   """Packing task."""
 
   def __init__(self, *args, **kwargs):
@@ -63,7 +63,7 @@ class PackingBoxes(Task):
       if np.sum(split) == 0:
         bboxes.append(node.bbox)
         return
-      split = np.float32(split) / np.sum(split)#每个轴被选中的概率
+      split = np.float32(split) / np.sum(split)
       split_axis = np.random.choice(range(len(split)), 1, p=split)[0]
 
       # Split along chosen axis and create 2 children
@@ -106,7 +106,7 @@ class PackingBoxes(Task):
       urdf = self.fill_template(object_template, {'DIM': size})
       box_id = env.add_object(urdf, pose)
       os.remove(urdf)
-      object_ids.append((box_id, (0, None)))#后面的tuple表示什么？
+      object_ids.append((box_id, (0, None)))
       icolor = np.random.choice(range(len(colors)), 1).squeeze()
       p.changeVisualShape(box_id, -1, rgbaColor=colors[icolor] + [1])
       object_points[box_id] = self.get_object_points(box_id)
@@ -121,7 +121,7 @@ class PackingBoxes(Task):
       object_volumes.append(np.prod(np.array(object_size) * 100))
       pose = self.get_random_pose(env, object_size)
       p.resetBasePositionAndOrientation(object_id, pose[0], pose[1])
-      true_poses.append(true_pose)#TODO: true_pose是什么形式的
+      true_poses.append(true_pose)
       # self.goal['places'][object_id] = true_pose
       # symmetry = 0  # zone-evaluation: symmetry does not matter
       # self.goal['steps'].append({object_id: (symmetry, [object_id])})
@@ -133,7 +133,53 @@ class PackingBoxes(Task):
     #     self.goal['steps'][i] for i in
     #.    np.argsort(-1 * np.array(object_volumes))
     # ]
-
+    # 打乱true_poses
+    np.random.shuffle(true_poses)
+    # print(true_poses)
+    # 把goals改为栈实现
     self.goals.append((
         object_ids, np.eye(len(object_ids)), true_poses, False, True, 'zone',
         (object_points, [(zone_pose, zone_size)]), 1))
+
+  def feedback(self, true_poses):
+    def is_laid_flat(true_pose, tolerance=0.1):
+      """
+      通过检查上表面法向量判断物块是否平放
+      Args:
+          quaternion: (x,y,z,w) 格式的四元数
+          tolerance: 允许的误差范围
+      Returns:
+          bool: 是否平放
+      """
+      # 获取旋转矩阵
+      quaternion = true_pose[1]
+      rot_matrix = p.getMatrixFromQuaternion(quaternion)
+      rot_matrix = np.array(rot_matrix).reshape(3, 3)
+      
+      # 上表面法向量（通常是旋转矩阵的第三列）
+      up_vector = rot_matrix[:, 2]
+      
+      # 计算与竖直方向(0,0,1)的夹角余弦值
+      cos_angle = abs(np.dot(up_vector, np.array([0, 0, 1])))
+      
+      # 如果余弦值接近1或-1，说明物块平放
+      return cos_angle > (1 - tolerance)
+    def is_on_top_of_others(true_pose, tolerance=0.1):
+      return true_pose[0][2] > 0.01
+    laid_flat = [{'obj_id': true_pose['obj_id'], 'is_laid_flat': is_laid_flat(true_pose['pose'])} for true_pose in true_poses]
+    on_top_of_others = [{'obj_id': true_pose['obj_id'], 'is_on_top_of_others': is_on_top_of_others(true_pose['pose'])} for true_pose in true_poses]
+    if np.sum([laid_flat['is_laid_flat'] for laid_flat in laid_flat]) == len(laid_flat) and np.sum([on_top_of_others['is_on_top_of_others'] for on_top_of_others in on_top_of_others]) == len(on_top_of_others):
+      return 'success'
+    else:
+      return f"object {[laid_flat[i]['obj_id'] for i in range(len(laid_flat)) if not (laid_flat[i]['is_laid_flat'] and on_top_of_others[i]['is_on_top_of_others'])]} is not properly placed in the container"
+
+  def recover_last_move(self, feedback,object_points,zone_pose,zone_size):
+    if feedback == 'success':
+      return
+    else:
+      # 获取feedback中最后一个物块的id
+      obj_id = feedback.split('object ')[1].split(' is')[0]
+      # 从obs中获取obj_id的pose
+      pose = p.getBasePositionAndOrientation(obj_id)
+      # 在goal中第一位添加将物块放下的指令
+      self.goals.insert(0, (obj_id, np.eye(len(self.goals[0][0])), [pose], False, True, 'zone', (object_points, [(zone_pose, zone_size)]), 1))
