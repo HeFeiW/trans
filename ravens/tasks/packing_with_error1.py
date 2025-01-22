@@ -178,6 +178,7 @@ class PackingWithError1(Task):
     self.goals.append((
         object_ids, match_matrix, true_poses, False, True, 'zone',
         (object_points, [(zone_pose, zone_size)]), 1))
+    self.home_occupied = np.zeros(len(object_ids))
   def feedback(self, obj_poses):
     def is_laid_flat(obj_pose, tolerance=0.1):
       """
@@ -206,7 +207,7 @@ class PackingWithError1(Task):
     laid_flat = [{'obj_id': obj_pose['obj_id'], 'is_laid_flat': is_laid_flat(obj_pose['pose'])} for obj_pose in obj_poses]
     on_top_of_others = [{'obj_id': obj_pose['obj_id'], 'is_on_top_of_others': is_on_top_of_others(obj_pose['pose'])} for obj_pose in obj_poses]
     if np.sum([laid_flat['is_laid_flat'] for laid_flat in laid_flat]) == len(laid_flat) and np.sum([on_top_of_others['is_on_top_of_others'] for on_top_of_others in on_top_of_others]) == len(on_top_of_others):
-      return 'success'
+      return f"successly placed {laid_flat['obj_id']}"
     else:
       return f"object {[laid_flat[i]['obj_id'] for i in range(len(laid_flat)) if not (laid_flat[i]['is_laid_flat'] and on_top_of_others[i]['is_on_top_of_others'])]} is not properly placed in the container"
   def _discrete_oracle(self, env):
@@ -218,6 +219,8 @@ class PackingWithError1(Task):
       # 解析feedback
       feedback = str(feedback)
       print(f"feedback: {feedback}")
+      #如果feedback包含success,则把当前的位置原住民的home_occupied设置为1
+      
       obj_to_correct = int(re.search(r'\[(\d+)', feedback).group(1)) if re.search(r'\[(\d+)', feedback) else None
 
       # Oracle uses perfect RGB-D orthographic images and segmentation masks.
@@ -240,6 +243,12 @@ class PackingWithError1(Task):
             if self.is_match(pose, targs[j], symmetry):
               matches[i, :] = 0
               matches[:, j] = 0
+      if "success" in feedback:
+        # 把当前的位置原住民的home_occupied设置为1
+        aborigine = int(re.search(r'\[(\d+)', feedback).group(1)) if re.search(r'\[(\d+)', feedback) else None
+        for i in range(len(obj)):
+            if aborigine == objs[i][0]:
+                self.home_occupied[i] = 1
       if obj_to_correct is not None:
         for i in range(len(objs)):
           print(f"objs[{i}]: {objs[i][0]}")
@@ -261,8 +270,14 @@ class PackingWithError1(Task):
         object_id, (symmetry, _) = objs[i]
         xyz, _ = p.getBasePositionAndOrientation(object_id)
         targets_i = np.argwhere(self.match_matrix[i, :]).reshape(-1)
+        
         if len(targets_i) > 0:  # pylint: disable=g-explicit-length-test
-          targets_xyz = np.float32([targs[j][0] for j in targets_i])
+
+          for j in targets_i:
+            if self.home_occupied[j] == 1:
+                pass
+            else:
+                targets_xyz.append(targs[j][0])
           dists = np.linalg.norm(
               targets_xyz - np.float32(xyz).reshape(1, 3), axis=1)
           nn = np.argmin(dists)
