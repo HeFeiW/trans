@@ -31,7 +31,7 @@ from ravens.tasks.stack_block_pyramid import StackBlockPyramid
 from ravens.tasks.sweeping_piles import SweepingPiles
 from ravens.tasks.task import Task
 from ravens.tasks.towers_of_hanoi import TowersOfHanoi
-from ravens.tasks.packing_with_error import PackingWithError
+from ravens.tasks.packing_with_error1 import PackingWithError1
 names = {
     'align-box-corner': AlignBoxCorner,
     'assembling-kits': AssemblingKits,
@@ -48,5 +48,5 @@ names = {
     'stack-block-pyramid': StackBlockPyramid,
     'sweeping-piles': SweepingPiles,
     'towers-of-hanoi': TowersOfHanoi,
-    'packing-with-error': PackingWithError
+    'packing-with-error': PackingWithError1
 }

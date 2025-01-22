@@ -108,7 +108,7 @@ class Task():
     """Discrete oracle agent."""
     OracleAgent = collections.namedtuple('OracleAgent', ['act'])
 
-    def act(obs, info):  # pylint: disable=unused-argument
+    def act(obs, info,feedback="success"):  # pylint: disable=unused-argument
       """Calculate action."""
 
       # Oracle uses perfect RGB-D orthographic images and segmentation masks.
@@ -116,7 +116,6 @@ class Task():
 
       # Unpack next goal step.
       objs, matches, targs, replace, rotations, _, _, _ = self.goals[0]
-#TODO replace啥意思
       # Match objects to targets without replacement.
       if not replace:
 
@@ -446,7 +445,7 @@ class ContinuousOracle:
 
     self._actions = []
 
-  def act(self, obs, info):
+  def act(self, obs, info, feedback="success"):
     """Get oracle action from planner."""
     if not self._actions:
       # Query the base oracle for pick and place poses.

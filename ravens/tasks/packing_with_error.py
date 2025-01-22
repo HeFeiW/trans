@@ -136,8 +136,6 @@ class PackingWithError(Task):
     # 打乱true_poses
     self.true_poses=true_poses
     np.random.shuffle(true_poses)
-    # print(true_poses)
-    # 把goals改为栈实现
     self.goals.append((
         object_ids, np.eye(len(object_ids)), true_poses, False, True, 'zone',
         (object_points, [(zone_pose, zone_size)]), 1))
