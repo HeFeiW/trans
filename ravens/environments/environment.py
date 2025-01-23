@@ -299,7 +299,7 @@ class Environment(gym.Env):
     # # plt.show()
   def render_camera(self, config):
     """Render RGB-D image with specified camera configuration."""
-# TODO 相机渲染设置
+
     # OpenGL camera settings.
     lookdir = np.float32([0, 0, 1]).reshape(3, 1)
     updir = np.float32([0, -1, 0]).reshape(3, 1)
@@ -310,14 +310,19 @@ class Environment(gym.Env):
     lookat = config['position'] + lookdir
     focal_len = config['intrinsics'][0]
     znear, zfar = config['zrange']
-    viewm = p.computeViewMatrix(config['position'], lookat, updir)#TODO 得到观察矩阵
+    viewm = p.computeViewMatrix(config['position'], lookat, updir)
     fovh = (config['image_size'][0] / 2) / focal_len
     fovh = 180 * np.arctan(fovh) * 2 / np.pi
 
     # Notes: 1) FOV is vertical FOV 2) aspect must be float
     aspect_ratio = config['image_size'][1] / config['image_size'][0]
     projm = p.computeProjectionMatrixFOV(fovh, aspect_ratio, znear, zfar)
-
+    # 检查渲染是否启用
+    rendering_enabled = p.configureDebugVisualizer(p.COV_ENABLE_RENDERING)
+    while not rendering_enabled:
+        print("Rendering was disabled, enabling now...")
+        p.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 1)
+        rendering_enabled = p.configureDebugVisualizer(p.COV_ENABLE_RENDERING)
     # Render with OpenGL camera settings.
     _, _, color, depth, segm = p.getCameraImage(
         width=config['image_size'][1],
@@ -329,7 +334,6 @@ class Environment(gym.Env):
         # Note when use_egl is toggled, this option will not actually use openGL
         # but EGL instead.
         renderer=p.ER_BULLET_HARDWARE_OPENGL)
-
     # Get color image.
     color_image_size = (config['image_size'][0], config['image_size'][1], 4)
     color = np.array(color, dtype=np.uint8).reshape(color_image_size)
@@ -349,6 +353,7 @@ class Environment(gym.Env):
 
     # Get segmentation image.
     segm = np.uint8(segm).reshape(depth_image_size)
+
     return color, depth, segm
 
   @property

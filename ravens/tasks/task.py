@@ -307,7 +307,7 @@ class Task():
     """Check if pose0 and pose1 match within a threshold."""
 
     # Get translational error.
-    diff_pos = np.float32(pose0[0][:2]) - np.float32(pose1[0][:2])
+    diff_pos = np.float32(pose0[0][:3]) - np.float32(pose1[0][:3])
     dist_pos = np.linalg.norm(diff_pos)
 
     # Get rotational error around z-axis (account for symmetries).
@@ -326,7 +326,10 @@ class Task():
 
     # Capture near-orthographic RGB-D images and segmentation masks.
     color, depth, segm = env.render_camera(self.oracle_cams[0])
-
+    # if np.all(segm == 255):
+    #   print("Warning: segm is empty or contains no object IDs")
+    #   # trigger task reset
+    #   env.reset()
     # Combine color with masks for faster processing.
     color = np.concatenate((color, segm[Ellipsis, None]), axis=2)
 

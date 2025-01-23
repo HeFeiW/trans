@@ -67,7 +67,6 @@ def main(unused_argv):
   max_steps = task.max_steps
   if FLAGS.continuous:
     max_steps *= (FLAGS.steps_per_seg * agent.num_poses)
-
   # Collect training data from oracle demonstrations.
   while dataset.n_episodes < FLAGS.n:
     print(f'Oracle demonstration: {dataset.n_episodes + 1}/{FLAGS.n}')

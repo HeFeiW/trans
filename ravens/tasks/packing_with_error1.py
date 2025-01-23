@@ -265,6 +265,9 @@ class PackingWithError1(Task):
       # Trigger task reset if no object is visible.
       if pick_mask is None or np.sum(pick_mask) == 0:
         self.goals = []
+        print(f"order: {order}")
+        in_picture = [np.sum(np.uint8(pick_mask == objs[pick_i][0])) for pick_i in order]
+        print(f"in_picture: {in_picture}")
         print('Object for pick is not visible. Skipping demonstration.')
         return 
 
@@ -282,7 +285,7 @@ class PackingWithError1(Task):
 
       # Get placing pose.
       targ_pose = targs[nn_targets[pick_i]]  # pylint: disable=undefined-loop-variable
-      self.last_targ_id = pick_i
+      self.last_targ_id = nn_targets[pick_i]
       obj_pose = p.getBasePositionAndOrientation(objs[pick_i][0])  # pylint: disable=undefined-loop-variable
       if not self.sixdof:
         obj_euler = utils.quatXYZW_to_eulerXYZ(obj_pose[1])
