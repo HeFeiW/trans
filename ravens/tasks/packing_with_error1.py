@@ -47,7 +47,7 @@ class PackingWithError1(Task):
 
   def reset(self, env):
     super().reset(env)
-
+    self.last_targ_id = None
     # Add container box.
     zone_size = self.get_random_size(0.05, 0.3, 0.05, 0.3, 0.05, 0.05)
     zone_pose = self.get_random_pose(env, zone_size)
@@ -165,6 +165,7 @@ class PackingWithError1(Task):
           match_matrix[i,j] = 1
           match_matrix[j,i] = 1
     self.match_matrix = match_matrix
+    self.occupied = np.zeros(len(object_ids))
     self.goals.append((
         object_ids, np.eye(len(object_ids)), true_poses, False, True, 'zone',
         (object_points, [(zone_pose, zone_size)]), 1))
@@ -177,7 +178,9 @@ class PackingWithError1(Task):
       print(f"feedback: {feedback}")
       obj_ids, _, targs, _, _, _, _, _ = self.goals[0]
       wrong_obj_index = None
-      if feedback is not None:
+      if feedback is None and self.last_targ_id is not None:
+        self.occupied[self.last_targ_id] = 1
+      else:
         wrong_obj = feedback
         for i in range(len(obj_ids)):
           if obj_ids[i][0] == wrong_obj:
@@ -185,7 +188,7 @@ class PackingWithError1(Task):
             break
         print(f"wrong_obj_index: {wrong_obj_index}")
         print(f"self.last_targ_id: {self.last_targ_id}")
-        if self.last_targ_id is not None and self.last_targ_id != wrong_obj_index:
+        if self.last_targ_id is not None :
             self.match_matrix[self.last_targ_id][wrong_obj_index] = 0
             self.match_matrix[wrong_obj_index][self.last_targ_id] = 0
       print(f"self.match_matrix: {self.match_matrix}") 
@@ -214,10 +217,14 @@ class PackingWithError1(Task):
       # Get objects to be picked (prioritize farthest from nearest neighbor).
       nn_dists = []
       nn_targets = []
+      print(f"self.occupied: {self.occupied}")
       for i in range(len(objs)):
         object_id, (symmetry, _) = objs[i]
         xyz, _ = p.getBasePositionAndOrientation(object_id)
-        targets_i = np.argwhere(self.match_matrix[i, :]).reshape(-1)
+        targets_i = []
+        for j in range(len(self.occupied)):
+          if self.occupied[j] == 0 and self.match_matrix[i,j] == 1:
+            targets_i.append(j)
         if len(targets_i) > 0:  # pylint: disable=g-explicit-length-test
           targets_xyz = np.float32([targs[j][0] for j in targets_i])
           dists = np.linalg.norm(
@@ -234,7 +241,15 @@ class PackingWithError1(Task):
 
       # Filter out matched objects.
       order = [i for i in order if nn_dists[i] > 0]
-
+      # 判断obj_mask中是否只有一个值
+      # 计算obj_mask的平均值
+    #   for i in range(len(objs)):
+    #     pick_m_i = np.uint8(obj_mask == objs[i][0])
+    #     if np.sum(pick_m_i) > 0:
+    #       print(f"obj{i} is in the image")
+    #     else:
+    #       print(f"obj{i} is not in the image")
+    #   print(f"order: {order}")
       pick_mask = None
       for pick_i in order:
         if wrong_obj_index is not None:
