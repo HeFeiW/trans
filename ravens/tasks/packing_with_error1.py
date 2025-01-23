@@ -171,23 +171,23 @@ class PackingWithError1(Task):
   def _discrete_oracle(self, env):
     """Discrete oracle agent."""
     OracleAgent = collections.namedtuple('OracleAgent', ['act'])
-
+    self.last_targ_id = None
     def act(obs, info,feedback=None,last_act=None):  # pylint: disable=unused-argument
       """Calculate action."""
       print(f"feedback: {feedback}")
       obj_ids, _, targs, _, _, _, _, _ = self.goals[0]
+      wrong_obj_index = None
       if feedback is not None:
         wrong_obj = feedback
         for i in range(len(obj_ids)):
-          if obj_ids[i] == wrong_obj:
+          if obj_ids[i][0] == wrong_obj:
             wrong_obj_index = i
             break
-        for i in range(len(targs)):
-          if (targs[i][0] == last_act['pose1'][0]).all():
-            print(f"targs[{i}][0]: {targs[i][0]}")
-            print(f"last_act['pose1'][0]: {last_act['pose1'][0]}")
-            self.match_matrix[i][wrong_obj_index] = 0
-            self.match_matrix[wrong_obj_index][i] = 0
+        print(f"wrong_obj_index: {wrong_obj_index}")
+        print(f"self.last_targ_id: {self.last_targ_id}")
+        if self.last_targ_id is not None and self.last_targ_id != wrong_obj_index:
+            self.match_matrix[self.last_targ_id][wrong_obj_index] = 0
+            self.match_matrix[wrong_obj_index][self.last_targ_id] = 0
       print(f"self.match_matrix: {self.match_matrix}") 
 
       # Oracle uses perfect RGB-D orthographic images and segmentation masks.
@@ -237,6 +237,8 @@ class PackingWithError1(Task):
 
       pick_mask = None
       for pick_i in order:
+        if wrong_obj_index is not None:
+          pick_i = wrong_obj_index
         pick_mask = np.uint8(obj_mask == objs[pick_i][0])
 
         # Erode to avoid picking on edges.
@@ -265,6 +267,7 @@ class PackingWithError1(Task):
 
       # Get placing pose.
       targ_pose = targs[nn_targets[pick_i]]  # pylint: disable=undefined-loop-variable
+      self.last_targ_id = pick_i
       obj_pose = p.getBasePositionAndOrientation(objs[pick_i][0])  # pylint: disable=undefined-loop-variable
       if not self.sixdof:
         obj_euler = utils.quatXYZW_to_eulerXYZ(obj_pose[1])
