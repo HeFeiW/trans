@@ -118,7 +118,7 @@ class Environment(gym.Env):
           textArgument=assets_root,
           intArgs=[p.AddFileIOAction],
           physicsClientId=client)
-
+    self.client = client#TODO whf added
     self._egl_plugin = None
     if use_egl:
       assert sys.platform == 'linux', ('EGL rendering is only supported on '
@@ -431,8 +431,11 @@ class Environment(gym.Env):
       color, depth, _ = self.render_camera(config)
       obs['color'] += (color,)
       obs['depth'] += (depth,)
-
-    return obs
+    def add_noise(obs):
+    #   obs['color'] += (np.random.normal(0, 3, obs['color'].shape),)
+    #   obs['depth'] += (np.random.normal(0, 0.003, obs['depth'].shape),)
+      return obs
+    return add_noise(obs)
 
 
 class EnvironmentNoRotationsWithHeightmap(Environment):
@@ -486,7 +489,12 @@ class EnvironmentNoRotationsWithHeightmap(Environment):
     cmap, hmap = utils.get_fused_heightmap(color_depth_obs, self.agent_cams,
                                            self.task.bounds, pix_size=0.003125)
     obs['heightmap'] = (cmap, hmap)
-    return obs
+    def add_noise(obs):
+    #   obs['color'] += (np.random.normal(0, 3, obs['color'].shape),)
+    #   obs['depth'] += (np.random.normal(0, 0.003, obs['depth'].shape),)
+    #   obs['heightmap'] += (np.random.normal(0, 0.003, obs['heightmap'].shape),)
+      return obs
+    return add_noise(obs)
 
 
 class ContinuousEnvironment(Environment):
@@ -560,7 +568,7 @@ class ContinuousEnvironment(Environment):
 
     obs = self._get_obs()
     obj_poses = self.task.obj_poses
-    feedback = self.task.feedback(true_poses)
+    feedback = self.task.feedback()
     return obs, reward, done, info, feedback
   
 

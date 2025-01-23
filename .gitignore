@@ -2,6 +2,10 @@
 /my_images/
 *.pkl
 *.json
+*.sh
 /build/
 /dist/
 /ravens.egg-info/
+/logs/
+/block-insertion.zip
+/block-insertion.zip.1

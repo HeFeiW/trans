@@ -164,15 +164,75 @@ class PackingWithError1(Task):
         if abs(obj_size_i[0]-obj_size_j[1])<obs_error and abs(obj_size_i[1]-obj_size_j[0])<obs_error:
           match_matrix[i,j] = -1
           match_matrix[j,i] = -1
+    self.match_matrix = match_matrix
     self.goals.append((
         object_ids, match_matrix, true_poses, False, True, 'zone',
         (object_points, [(zone_pose, zone_size)]), 1))
+    self.home_occupied = np.zeros(len(object_ids))
+  def feedback(self, obj_poses):
+    def is_laid_flat(obj_pose, tolerance=0.1):
+      """
+      通过检查上表面法向量判断物块是否平放
+      Args:
+          quaternion: (x,y,z,w) 格式的四元数
+          tolerance: 允许的误差范围
+      Returns:
+          bool: 是否平放
+      """
+      # 获取旋转矩阵
+      quaternion = obj_pose[1]
+      rot_matrix = p.getMatrixFromQuaternion(quaternion)
+      rot_matrix = np.array(rot_matrix).reshape(3, 3)
+      
+      # 上表面法向量（通常是旋转矩阵的第三列）
+      up_vector = rot_matrix[:, 2]
+      
+      # 计算与竖直方向(0,0,1)的夹角余弦值
+      cos_angle = abs(np.dot(up_vector, np.array([0, 0, 1])))
+      
+      # 如果余弦值接近1或-1，说明物块平放
+      return cos_angle > (1 - tolerance)
+    def is_not_on_top_of_others(obj_pose, tolerance=0.1):
+      return not obj_pose[0][2] > 0.06
+    def is_aligned_with_container(obj_id, tolerance=0.2618):
+      container_id = self.env.obj_ids["fixed"][0]
+      container_pose = p.getBasePositionAndOrientation(container_id)
+      contact_points = p.getContactPoints(container_id, obj_id)
+      if len(contact_points) >0:
+        return True
+      container_rotation_matrix = np.array(p.getMatrixFromQuaternion(container_pose[1])).reshape(3, 3)
+      obj_pose = p.getBasePositionAndOrientation(obj_id)
+      obj_rotation_matrix = np.array(p.getMatrixFromQuaternion(obj_pose[1])).reshape(3, 3)
+      angle_diff = np.arccos(np.clip(np.dot(container_rotation_matrix[:, 0], obj_rotation_matrix[:, 0]), -1.0, 1.0))
+      angle_diff_90 = angle_diff-np.pi/2
+      return min(angle_diff,angle_diff_90) < tolerance
+    laid_flat = [{'obj_id': obj_pose['obj_id'], 'is_laid_flat': is_laid_flat(obj_pose['pose'])} for obj_pose in obj_poses]
+    on_top_of_others = [{'obj_id': obj_pose['obj_id'], 'is_on_top_of_others': is_not_on_top_of_others(obj_pose['pose'])} for obj_pose in obj_poses]
+    aligned_with_container = [{'obj_id': obj_pose['obj_id'], 'is_aligned_with_container': is_aligned_with_container(obj_pose['obj_id'])} for obj_pose in obj_poses]
+    if np.sum([laid_flat['is_laid_flat'] for laid_flat in laid_flat]) == len(laid_flat) and np.sum([on_top_of_others['is_on_top_of_others'] for on_top_of_others in on_top_of_others]) == len(on_top_of_others):
+      return f"success"
+    else:
+      feedback = ""
+      for i in range(len(laid_flat)):
+        if not laid_flat[i]['is_laid_flat']:
+          feedback += f"object {laid_flat[i]['obj_id']} is not properly placed in the container\n"
+        if not on_top_of_others[i]['is_on_top_of_others']:
+          feedback += f"object {on_top_of_others[i]['obj_id']} is not on top of others\n"
+        if not aligned_with_container[i]['is_aligned_with_container']:
+          feedback += f"object {aligned_with_container[i]['obj_id']} is not aligned with the container\n"
+      return feedback
   def _discrete_oracle(self, env):
     """Discrete oracle agent."""
     OracleAgent = collections.namedtuple('OracleAgent', ['act'])
-
+    self.env = env
     def act(obs, info,feedback="success"):  # pylint: disable=unused-argument
       """Calculate action."""
+      # 解析feedback
+      feedback = str(feedback)
+      print(f"feedback: {feedback}")
+      #如果feedback包含success,则把当前的位置原住民的home_occupied设置为1
+      
+      obj_to_correct = int(re.search(r'\[(\d+)', feedback).group(1)) if re.search(r'\[(\d+)', feedback) else None
 
       # Oracle uses perfect RGB-D orthographic images and segmentation masks.
       _, hmap, obj_mask = self.get_true_image(env)
@@ -194,38 +254,79 @@ class PackingWithError1(Task):
             if self.is_match(pose, targs[j], symmetry):
               matches[i, :] = 0
               matches[:, j] = 0
-
+      if "success" in feedback:
+        #遍历所有target,如果该位置有物体,则把该物体的home_occupied设置为1
+        for i in range(len(self.home_occupied)):
+          ray_from_point = (targs[i][0][0],targs[i][0][1],targs[i][0][2]-0.02)
+          ray_to_point = (targs[i][0][0],targs[i][0][1],targs[i][0][2]-0.04)
+          ray_result = p.rayTest(rayFromPosition=ray_from_point, rayToPosition=ray_to_point, physicsClientId=self.env.client)
+          if len(ray_result) > 0:
+            self.home_occupied[i] = 1
+        print(f"object{np.argwhere(self.home_occupied).reshape(-1)}'s home is occupied")
+          
+      if obj_to_correct is not None:
+        for i in range(len(objs)):
+          if objs[i][0] == obj_to_correct:
+            obj_to_correct_index = i
+            obj_to_correct_pose_init = p.getBasePositionAndOrientation(objs[i][0])
+            obj_to_correct_pose = (obj_to_correct_pose_init[0],obj_to_correct_pose_init[1],0.5)
+            break
+        # 获得原本应该在这个位置上的物体
+        for i in range(len(objs)):
+          if self.is_match(obj_to_correct_pose, targs[i], symmetry):
+            aborigine = i
+            self.match_matrix[aborigine,obj_to_correct_index] = 0
+            self.match_matrix[obj_to_correct_index,aborigine] = 0
+            break
+      
+        for i in range(len(objs)):
+          obj_pose = p.getBasePositionAndOrientation(objs[i][0])
       # Get objects to be picked (prioritize farthest from nearest neighbor).
       nn_dists = []
       nn_targets = []
       for i in range(len(objs)):
         object_id, (symmetry, _) = objs[i]
-        xyz, _ = p.getBasePositionAndOrientation(object_id)
-        targets_i = np.argwhere(matches[i, :]).reshape(-1)
+        xyz, orientation = p.getBasePositionAndOrientation(object_id)
+        targets_i = np.argwhere(self.match_matrix[i, :]).reshape(-1)
+        targets_xyz = []
         if len(targets_i) > 0:  # pylint: disable=g-explicit-length-test
-          targets_xyz = np.float32([targs[j][0] for j in targets_i])
+          targs_i_available = []
+          for j in targets_i:
+            if self.home_occupied[j] == 1:
+                pass
+            else:
+                targs_i_available.append(j)
+                targets_xyz.append(targs[j][0])
+          if len(targets_xyz) == 0:
+            targets_xyz.append(targs[i][0])
+            targs_i_available.append(i)
           dists = np.linalg.norm(
               targets_xyz - np.float32(xyz).reshape(1, 3), axis=1)
           nn = np.argmin(dists)
           nn_dists.append(dists[nn])
-          nn_targets.append(targets_i[nn])
-
+          nn_targets.append(targs_i_available[nn])
         # Handle ignored objects.
         else:
           nn_dists.append(0)
           nn_targets.append(-1)
-      order = np.argsort(nn_dists)[::-1]#TODO 什么意思
-
+      order = np.argsort(nn_dists)[::-1]
+      print(f"order: {order}")
+      if obj_to_correct is not None:
+        print(f"obj_to_correct_index: {obj_to_correct_index}")
+        order_copy = order.copy()
+        order = []
+        order.append(obj_to_correct_index)
+        for i in range(len(order_copy)):
+          if order_copy[i] != obj_to_correct_index:
+            order.append(order_copy[i])
       # Filter out matched objects.
       order = [i for i in order if nn_dists[i] > 0]
-
       pick_mask = None
+        
       for pick_i in order:
         pick_mask = np.uint8(obj_mask == objs[pick_i][0])
-
-        # Erode to avoid picking on edges.
-        # pick_mask = cv2.erode(pick_mask, np.ones((3, 3), np.uint8))
-
+      # Erode to avoid picking on edges.
+      # pick_mask = cv2.erode(pick_mask, np.ones((3, 3), np.uint8))
         if np.sum(pick_mask) > 0:
           break
 
@@ -234,18 +335,17 @@ class PackingWithError1(Task):
         self.goals = []
         print('Object for pick is not visible. Skipping demonstration.')
         return
-
       # Get picking pose.
-      #whf added
-      for config in env.agent_cams:
-        env.save_image(config) 
       pick_prob = np.float32(pick_mask)
       pick_pix = utils.sample_distribution(pick_prob)#TODO 什么意思
       # For "deterministic" demonstrations on insertion-easy, use this:
       # pick_pix = (160,80)
       pick_pos = utils.pix_to_xyz(pick_pix, hmap,
                                   self.bounds, self.pix_size)
+      # 如果match_matrix中该位置为-1,则将物块旋转90度
       pick_pose = (np.asarray(pick_pos), np.asarray((0, 0, 0, 1)))
+      if self.match_matrix[pick_i,pick_i] == -1:
+        pick_pose = (np.asarray(pick_pos), np.asarray((0, 0, np.pi/2, 1)))
 
       # Get placing pose.
       targ_pose = targs[nn_targets[pick_i]]  # pylint: disable=undefined-loop-variable
@@ -268,97 +368,3 @@ class PackingWithError1(Task):
       return {'pose0': pick_pose, 'pose1': place_pose}
 
     return OracleAgent(act)
-  def reward(self):
-    """Get delta rewards for current timestep.
-
-    Returns:
-      A tuple consisting of the scalar (delta) reward, plus `extras`
-        dict which has extra task-dependent info from the process of
-        computing rewards that gives us finer-grained details. Use
-        `extras` for further data analysis.
-    """
-    reward, info = 0, {}
-
-    if self.goals:
-      # Unpack next goal step.
-      objs, matches, targs, _, _, metric, params, max_reward = self.goals[0]
-
-      # Evaluate by matching object poses.
-      if metric == 'pose':
-        step_reward = 0
-        for i in range(len(objs)):
-          object_id, (symmetry, _) = objs[i]
-          pose = p.getBasePositionAndOrientation(object_id)
-          targets_i = np.argwhere(matches[i, :]).reshape(-1)
-          for j in targets_i:
-            target_pose = targs[j]
-            if self.is_match(pose, target_pose, symmetry):
-              step_reward += max_reward / len(objs)
-              break
-
-      # Evaluate by measuring object intersection with zone.
-      elif metric == 'zone':
-        zone_pts, total_pts = 0, 0
-        obj_pts, zones = params
-        for zone_pose, zone_size in zones:
-
-          # Count valid points in zone.
-          for obj_id in obj_pts:
-            pts = obj_pts[obj_id]
-            obj_pose = p.getBasePositionAndOrientation(obj_id)
-            world_to_zone = utils.invert(zone_pose)
-            obj_to_zone = utils.multiply(world_to_zone, obj_pose)
-            pts = np.float32(utils.apply(obj_to_zone, pts))
-            if len(zone_size) > 1:
-              valid_pts = np.logical_and.reduce([
-                  pts[0, :] > -zone_size[0] / 2, pts[0, :] < zone_size[0] / 2,
-                  pts[1, :] > -zone_size[1] / 2, pts[1, :] < zone_size[1] / 2,
-                  pts[2, :] < zone_size[2]])
-
-            zone_pts += np.sum(np.float32(valid_pts))
-            total_pts += pts.shape[1]
-        step_reward = max_reward * (zone_pts / total_pts)
-
-      # Get cumulative rewards and return delta.
-      reward = self.progress + step_reward - self._rewards
-      self._rewards = self.progress + step_reward
-
-      # Move to next goal step if current goal step is complete.
-      if np.abs(max_reward - step_reward) < 0.01:
-        self.progress += max_reward  # Update task progress.
-        self.goals.pop(0)
-
-    else:
-      # At this point we are done with the task but executing the last movements
-      # in the plan. We should return 0 reward to prevent the total reward from
-      # exceeding 1.0.
-      reward = 0.0
-
-    return reward, info
-  def feedback(self):
-    """检测环境中物体之间的碰撞。
-    
-    返回:
-        bool: True表示有碰撞发生，False表示没有碰撞
-    """
-    # 获取所有物体的ID
-    objs, _, targs, _, _, _, _, _ = self.goals[0]
-    object_ids = [obj[0] for obj in objs]
-    
-    # 检查每对物体之间的碰撞
-    for i in range(len(object_ids)):
-        for j in range(i+1, len(object_ids)):
-            # 使用getClosestPoints检测碰撞，距离阈值为0表示接触
-            closest_points = p.getClosestPoints(
-                object_ids[i], 
-                object_ids[j], 
-                distance=0.0
-            )
-            # 如果有接触点，说明发生碰撞
-            if len(closest_points) > 0:
-                return True
-                
-    # 如果没有检测到任何碰撞
-    return False
-
-  
