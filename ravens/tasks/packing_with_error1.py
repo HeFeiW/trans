@@ -162,17 +162,33 @@ class PackingWithError1(Task):
           match_matrix[i,j] = 1
           match_matrix[j,i] = 1
         if abs(obj_size_i[0]-obj_size_j[1])<obs_error and abs(obj_size_i[1]-obj_size_j[0])<obs_error:
-          match_matrix[i,j] = -1
-          match_matrix[j,i] = -1
+          match_matrix[i,j] = 1
+          match_matrix[j,i] = 1
+    self.match_matrix = match_matrix
     self.goals.append((
-        object_ids, match_matrix, true_poses, False, True, 'zone',
+        object_ids, np.eye(len(object_ids)), true_poses, False, True, 'zone',
         (object_points, [(zone_pose, zone_size)]), 1))
   def _discrete_oracle(self, env):
     """Discrete oracle agent."""
     OracleAgent = collections.namedtuple('OracleAgent', ['act'])
 
-    def act(obs, info,feedback="success"):  # pylint: disable=unused-argument
+    def act(obs, info,feedback=None,last_act=None):  # pylint: disable=unused-argument
       """Calculate action."""
+      print(f"feedback: {feedback}")
+      obj_ids, _, targs, _, _, _, _, _ = self.goals[0]
+      if feedback is not None:
+        wrong_obj = feedback
+        for i in range(len(obj_ids)):
+          if obj_ids[i] == wrong_obj:
+            wrong_obj_index = i
+            break
+        for i in range(len(targs)):
+          if (targs[i][0] == last_act['pose1'][0]).all():
+            print(f"targs[{i}][0]: {targs[i][0]}")
+            print(f"last_act['pose1'][0]: {last_act['pose1'][0]}")
+            self.match_matrix[i][wrong_obj_index] = 0
+            self.match_matrix[wrong_obj_index][i] = 0
+      print(f"self.match_matrix: {self.match_matrix}") 
 
       # Oracle uses perfect RGB-D orthographic images and segmentation masks.
       _, hmap, obj_mask = self.get_true_image(env)
@@ -183,7 +199,7 @@ class PackingWithError1(Task):
       if not replace:
 
         # Modify a copy of the match matrix.
-        matches = matches.copy()
+        matches = self.match_matrix.copy()
 
         # Ignore already matched objects.
         for i in range(len(objs)):
@@ -201,7 +217,7 @@ class PackingWithError1(Task):
       for i in range(len(objs)):
         object_id, (symmetry, _) = objs[i]
         xyz, _ = p.getBasePositionAndOrientation(object_id)
-        targets_i = np.argwhere(matches[i, :]).reshape(-1)
+        targets_i = np.argwhere(self.match_matrix[i, :]).reshape(-1)
         if len(targets_i) > 0:  # pylint: disable=g-explicit-length-test
           targets_xyz = np.float32([targs[j][0] for j in targets_i])
           dists = np.linalg.norm(
@@ -233,7 +249,7 @@ class PackingWithError1(Task):
       if pick_mask is None or np.sum(pick_mask) == 0:
         self.goals = []
         print('Object for pick is not visible. Skipping demonstration.')
-        return
+        return 
 
       # Get picking pose.
       #whf added
@@ -342,6 +358,8 @@ class PackingWithError1(Task):
         bool: True表示有碰撞发生，False表示没有碰撞
     """
     # 获取所有物体的ID
+    if len(self.goals) == 0:
+      return False
     objs, _, targs, _, _, _, _, _ = self.goals[0]
     object_ids = [obj[0] for obj in objs]
     
@@ -356,9 +374,13 @@ class PackingWithError1(Task):
             )
             # 如果有接触点，说明发生碰撞
             if len(closest_points) > 0:
-                return True
+                #返回两个物体中z值较大的那个
+                if p.getBasePositionAndOrientation(object_ids[i])[0][2] > p.getBasePositionAndOrientation(object_ids[j])[0][2]:
+                  return object_ids[i]
+                else:
+                  return object_ids[j]
                 
     # 如果没有检测到任何碰撞
-    return False
+    return None
 
   

@@ -79,8 +79,10 @@ def main(unused_argv):
     info = None
     feedback = None
     reward = 0
+    last_act = None
     for _ in range(max_steps):
-      act = agent.act(obs, info, feedback)
+      act = agent.act(obs, info, feedback,last_act)
+      last_act = act
       episode.append((obs, act, reward, info, feedback))
       obs, reward, done, info, feedback = env.step(act)
       total_reward += reward

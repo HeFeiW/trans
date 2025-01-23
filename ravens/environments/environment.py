@@ -254,9 +254,9 @@ class Environment(gym.Env):
 
     obs = self._get_obs()
 
-    obj_ids = self.obj_ids['rigid']
-    obj_poses = [{"obj_id":obj_id,"pose":p.getBasePositionAndOrientation(obj_id)} for obj_id in obj_ids]
-    feedback = self.task.feedback(obj_poses)
+    # obj_ids = self.obj_ids['rigid']
+    # obj_poses = [{"obj_id":obj_id,"pose":p.getBasePositionAndOrientation(obj_id)} for obj_id in obj_ids]
+    feedback = self.task.feedback()
     return obs, reward, done, info, feedback
 
   def close(self):
