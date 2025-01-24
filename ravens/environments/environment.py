@@ -48,7 +48,7 @@ class Environment(gym.Env):
                disp=False,
                shared_memory=False,
                hz=240,
-               use_egl=False):
+               use_egl=True):
     """Creates OpenAI Gym-style environment with PyBullet.
 
     Args:
@@ -320,7 +320,7 @@ class Environment(gym.Env):
     # 检查渲染是否启用
     rendering_enabled = p.configureDebugVisualizer(p.COV_ENABLE_RENDERING)
     while not rendering_enabled:
-        print("Rendering was disabled, enabling now...")
+        # print("Rendering was disabled, enabling now...")
         p.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 1)
         rendering_enabled = p.configureDebugVisualizer(p.COV_ENABLE_RENDERING)
     # Render with OpenGL camera settings.
