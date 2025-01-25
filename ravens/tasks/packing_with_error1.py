@@ -172,26 +172,28 @@ class PackingWithError1(Task):
   def _discrete_oracle(self, env):
     """Discrete oracle agent."""
     OracleAgent = collections.namedtuple('OracleAgent', ['act'])
+    self.last_moved_obj = None
     self.last_targ_id = None
-    def act(obs, info,feedback=None,last_act=None):  # pylint: disable=unused-argument
+    def act(obs, info,feedback=True,last_act=None):  # pylint: disable=unused-argument
       """Calculate action."""
-      print(f"feedback: {feedback}")
+    #   print(f"feedback: {feedback}")
       obj_ids, _, targs, _, _, _, _, _ = self.goals[0]
       wrong_obj_index = None
-      if feedback is None and self.last_targ_id is not None:
+      if feedback is True and self.last_targ_id is not None:
         self.occupied[self.last_targ_id] = 1
       else:
-        wrong_obj = feedback
+        wrong_obj = self.last_moved_obj
         for i in range(len(obj_ids)):
           if obj_ids[i][0] == wrong_obj:
             wrong_obj_index = i
             break
-        print(f"wrong_obj_index: {wrong_obj_index}")
-        print(f"self.last_targ_id: {self.last_targ_id}")
+        # print(f"wrong_obj_index: {wrong_obj_index}")
         if self.last_targ_id is not None :
             self.match_matrix[self.last_targ_id][wrong_obj_index] = 0
             self.match_matrix[wrong_obj_index][self.last_targ_id] = 0
-      print(f"self.match_matrix: {self.match_matrix}") 
+    #   print(f"self.last_moved_obj: {self.last_moved_obj}")
+    #   print(f"self.last_targ_id: {self.last_targ_id}")
+    #   print(f"self.match_matrix: {self.match_matrix}") 
 
       # Oracle uses perfect RGB-D orthographic images and segmentation masks.
       _, hmap, obj_mask = self.get_true_image(env)
@@ -217,7 +219,7 @@ class PackingWithError1(Task):
       # Get objects to be picked (prioritize farthest from nearest neighbor).
       nn_dists = []
       nn_targets = []
-      print(f"self.occupied: {self.occupied}")
+    #   print(f"self.occupied: {self.occupied}")
       for i in range(len(objs)):
         object_id, (symmetry, _) = objs[i]
         xyz, _ = p.getBasePositionAndOrientation(object_id)
@@ -258,16 +260,17 @@ class PackingWithError1(Task):
 
         # Erode to avoid picking on edges.
         # pick_mask = cv2.erode(pick_mask, np.ones((3, 3), np.uint8))
-
+        self.last_moved_obj = objs[pick_i][0]
         if np.sum(pick_mask) > 0:
           break
-
+      
       # Trigger task reset if no object is visible.
       if pick_mask is None or np.sum(pick_mask) == 0:
         self.goals = []
-        print(f"order: {order}")
-        in_picture = [np.sum(np.uint8(pick_mask == objs[pick_i][0])) for pick_i in order]
-        print(f"in_picture: {in_picture}")
+        self.last_moved_obj = None
+        # print(f"order: {order}")
+        # in_picture = [np.sum(np.uint8(pick_mask == objs[pick_i][0])) for pick_i in order]
+        # print(f"in_picture: {in_picture}")
         print('Object for pick is not visible. Skipping demonstration.')
         return 
 
@@ -286,6 +289,10 @@ class PackingWithError1(Task):
       # Get placing pose.
       targ_pose = targs[nn_targets[pick_i]]  # pylint: disable=undefined-loop-variable
       self.last_targ_id = nn_targets[pick_i]
+      if nn_targets[pick_i] == -1 and (self.occupied == 0).all() != True:
+        print(f"place in the spare place")
+        self.last_targ_id = np.random.choice(np.argwhere(self.occupied == 0).reshape(-1))
+        targ_pose = targs[self.last_targ_id]
       obj_pose = p.getBasePositionAndOrientation(objs[pick_i][0])  # pylint: disable=undefined-loop-variable
       if not self.sixdof:
         obj_euler = utils.quatXYZW_to_eulerXYZ(obj_pose[1])
@@ -372,36 +379,33 @@ class PackingWithError1(Task):
       reward = 0.0
 
     return reward, info
-  def feedback(self):
+  def feedback(self,env):
     """检测环境中物体之间的碰撞。
     
     返回:
         bool: True表示有碰撞发生，False表示没有碰撞
     """
     # 获取所有物体的ID
+    if self.last_moved_obj is None:
+      return True
     if len(self.goals) == 0:
       return False
-    objs, _, targs, _, _, _, _, _ = self.goals[0]
-    object_ids = [obj[0] for obj in objs]
-    
+    objs, _, _, _, _, _, _, _ = self.goals[0]
+    object_ids = [(obj[0] if obj[0] != self.last_moved_obj else env.obj_ids['fixed'][0]) for obj in objs]
+    # print(f"last_moved_obj: {self.last_moved_obj}")
+    # container_z = p.getBasePositionAndOrientation(env.obj_ids['fixed'][0])[0][2]
+    container_z = 0.25
+    # print(f"container_z: {container_z}")
     # 检查每对物体之间的碰撞
     for i in range(len(object_ids)):
-        for j in range(i+1, len(object_ids)):
-            # 使用getClosestPoints检测碰撞，距离阈值为0表示接触
-            closest_points = p.getClosestPoints(
-                object_ids[i], 
-                object_ids[j], 
-                distance=0.0
-            )
-            # 如果有接触点，说明发生碰撞
-            if len(closest_points) > 0:
-                #返回两个物体中z值较大的那个
-                if p.getBasePositionAndOrientation(object_ids[i])[0][2] > p.getBasePositionAndOrientation(object_ids[j])[0][2]:
-                  return object_ids[i]
-                else:
-                  return object_ids[j]
-                
-    # 如果没有检测到任何碰撞
-    return None
-
-  
+      closest_points = p.getClosestPoints(
+          object_ids[i], 
+          self.last_moved_obj,
+          distance=1e-3
+      )
+      for closest_point in closest_points:
+        # 如果碰撞，且碰撞点在容器上方，则返回 False
+        if closest_point[6][2] > container_z-0.02:
+          print(f"closest_point: {closest_point}")
+          return False
+    return True

@@ -48,7 +48,7 @@ class Environment(gym.Env):
                disp=False,
                shared_memory=False,
                hz=240,
-               use_egl=True):
+               use_egl=False):
     """Creates OpenAI Gym-style environment with PyBullet.
 
     Args:
@@ -131,8 +131,8 @@ class Environment(gym.Env):
         self._egl_plugin = p.loadPlugin('eglRendererPlugin')
       print('EGL renderering enabled.')
 
-    p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0)
-    p.setPhysicsEngineParameter(enableFileCaching=0)
+    p.configureDebugVisualizer(p.COV_ENABLE_GUI, 1)#0 to 1 TODO
+    p.setPhysicsEngineParameter(enableFileCaching=1)#0 to 1 TODO
     p.setAdditionalSearchPath(assets_root)
     p.setAdditionalSearchPath(tempfile.gettempdir())
     p.setTimeStep(1. / hz)
@@ -187,7 +187,7 @@ class Environment(gym.Env):
     p.setGravity(0, 0, -9.8)# set the gravity
 
     # Temporarily disable rendering to load scene faster.
-    p.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 0)
+    p.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 0)#TODO temp
 
     pybullet_utils.load_urdf(p, os.path.join(self.assets_root, PLANE_URDF_PATH),
                              [0, 0, -0.001])# load the plane
@@ -256,7 +256,7 @@ class Environment(gym.Env):
 
     # obj_ids = self.obj_ids['rigid']
     # obj_poses = [{"obj_id":obj_id,"pose":p.getBasePositionAndOrientation(obj_id)} for obj_id in obj_ids]
-    feedback = self.task.feedback()
+    feedback = self.task.feedback(self)
     return obs, reward, done, info, feedback
 
   def close(self):
@@ -317,12 +317,13 @@ class Environment(gym.Env):
     # Notes: 1) FOV is vertical FOV 2) aspect must be float
     aspect_ratio = config['image_size'][1] / config['image_size'][0]
     projm = p.computeProjectionMatrixFOV(fovh, aspect_ratio, znear, zfar)
+    p.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 1)
     # 检查渲染是否启用
-    rendering_enabled = p.configureDebugVisualizer(p.COV_ENABLE_RENDERING)
-    while not rendering_enabled:
-        # print("Rendering was disabled, enabling now...")
-        p.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 1)
-        rendering_enabled = p.configureDebugVisualizer(p.COV_ENABLE_RENDERING)
+    # rendering_enabled = p.configureDebugVisualizer(p.COV_ENABLE_RENDERING)
+    # while not rendering_enabled:
+    #     # print("Rendering was disabled, enabling now...")
+    #     p.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 1)
+    #     rendering_enabled = p.configureDebugVisualizer(p.COV_ENABLE_RENDERING)
     # Render with OpenGL camera settings.
     _, _, color, depth, segm = p.getCameraImage(
         width=config['image_size'][1],
@@ -333,8 +334,9 @@ class Environment(gym.Env):
         flags=p.ER_SEGMENTATION_MASK_OBJECT_AND_LINKINDEX,
         # Note when use_egl is toggled, this option will not actually use openGL
         # but EGL instead.
-        renderer=p.ER_BULLET_HARDWARE_OPENGL)
+        renderer=p.ER_TINY_RENDERER)
     # Get color image.
+    # print(f"{np.unique(np.uint8(segm))}")
     color_image_size = (config['image_size'][0], config['image_size'][1], 4)
     color = np.array(color, dtype=np.uint8).reshape(color_image_size)
     color = color[:, :, :3]  # remove alpha channel
@@ -552,7 +554,7 @@ class ContinuousEnvironment(Environment):
       if timeout:
         obs = self._get_obs()
         # if self.task==PackingWithError:
-        #     feedback = self.task.feedback()
+        #     feedback = self.task.feedback(self)
         #     return obs, 0.0, True, self.info, feedback
         return obs, 0.0, True, self.info, "timeout"
 
@@ -573,7 +575,7 @@ class ContinuousEnvironment(Environment):
 
     obs = self._get_obs()
     obj_poses = self.task.obj_poses
-    feedback = self.task.feedback()
+    feedback = self.task.feedback(self)
     return obs, reward, done, info, feedback
   
 

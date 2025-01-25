@@ -92,7 +92,9 @@ def main(unused_argv):
 
     # Only save completed demonstrations.
     # TODO(andyzeng): add back deformable logic.
-    if total_reward > 0.99:
+    # TODO whf for packing-with-error oracle is not optimal, 
+    # set 0.70 as a rather good threshold
+    if total_reward > 0.70:
       dataset.add(seed, episode)
 
 if __name__ == '__main__':
