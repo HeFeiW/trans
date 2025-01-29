@@ -176,7 +176,7 @@ class PackingWithError1(Task):
     self.last_targ_id = None
     def act(obs, info,feedback=True,last_act=None):  # pylint: disable=unused-argument
       """Calculate action."""
-    #   print(f"feedback: {feedback}")
+      print(f"feedback: {feedback}")
       obj_ids, _, targs, _, _, _, _, _ = self.goals[0]
       wrong_obj_index = None
       if feedback is True and self.last_targ_id is not None:
@@ -199,27 +199,13 @@ class PackingWithError1(Task):
       _, hmap, obj_mask = self.get_true_image(env)
 
       # Unpack next goal step.
-      objs, matches, targs, replace, rotations, _, _, _ = self.goals[0]
-      # Match objects to targets without replacement.
-      if not replace:
-
-        # Modify a copy of the match matrix.
-        matches = self.match_matrix.copy()
-
-        # Ignore already matched objects.
-        for i in range(len(objs)):
-          object_id, (symmetry, _) = objs[i]
-          pose = p.getBasePositionAndOrientation(object_id)
-          targets_i = np.argwhere(matches[i, :]).reshape(-1)
-          for j in targets_i:
-            if self.is_match(pose, targs[j], symmetry):
-              matches[i, :] = 0
-              matches[:, j] = 0
-
+      objs, _, targs, _, rotations, _, params, _ = self.goals[0]
+      _ , zone = params
+      zone_pose ,zone_size = zone[0]
       # Get objects to be picked (prioritize farthest from nearest neighbor).
       nn_dists = []
       nn_targets = []
-    #   print(f"self.occupied: {self.occupied}")
+      print(f"self.occupied: {self.occupied}")
       for i in range(len(objs)):
         object_id, (symmetry, _) = objs[i]
         xyz, _ = p.getBasePositionAndOrientation(object_id)
@@ -234,7 +220,6 @@ class PackingWithError1(Task):
           nn = np.argmin(dists)
           nn_dists.append(dists[nn])
           nn_targets.append(targets_i[nn])
-
         # Handle ignored objects.
         else:
           nn_dists.append(0)
@@ -252,6 +237,28 @@ class PackingWithError1(Task):
     #     else:
     #       print(f"obj{i} is not in the image")
     #   print(f"order: {order}")
+
+      if len(order) == 0 and feedback is False:
+        print(f"order is empty")
+        world_to_zone = utils.invert(zone_pose)
+        print(f"zone_size:{zone_size}")
+        for i in range(len(objs)):
+            obj_id = objs[i][0]
+            obj_pose = p.getBasePositionAndOrientation(obj_id)
+            obj_to_zone = utils.multiply(world_to_zone, obj_pose)
+            print(f"obj_to_zone:{obj_to_zone[0]}")
+            if len(zone_size) > 1:
+              in_zone = np.logical_and.reduce([obj_to_zone[0][0]< zone_size[0] /2,
+                                               obj_to_zone[0][0]>-zone_size[0] /2,
+                                               obj_to_zone[0][1]< zone_size[1] /2,
+                                               obj_to_zone[0][1]>-zone_size[1] /2,
+                                               obj_to_zone[0][2]< zone_size[2] /2,
+                                               obj_to_zone[0][2]>-zone_size[2] /2,
+                                               ])
+              if in_zone == 0:
+                order.append(i)
+                targets_i.append(np.random.choice(np.argmin(self.occupied).reshape(-1)))
+                break
       pick_mask = None
       for pick_i in order:
         if wrong_obj_index is not None:
@@ -289,10 +296,6 @@ class PackingWithError1(Task):
       # Get placing pose.
       targ_pose = targs[nn_targets[pick_i]]  # pylint: disable=undefined-loop-variable
       self.last_targ_id = nn_targets[pick_i]
-      if nn_targets[pick_i] == -1 and (self.occupied == 0).all() != True:
-        print(f"place in the spare place")
-        self.last_targ_id = np.random.choice(np.argwhere(self.occupied == 0).reshape(-1))
-        targ_pose = targs[self.last_targ_id]
       obj_pose = p.getBasePositionAndOrientation(objs[pick_i][0])  # pylint: disable=undefined-loop-variable
       if not self.sixdof:
         obj_euler = utils.quatXYZW_to_eulerXYZ(obj_pose[1])
@@ -392,20 +395,20 @@ class PackingWithError1(Task):
       return False
     objs, _, _, _, _, _, _, _ = self.goals[0]
     object_ids = [(obj[0] if obj[0] != self.last_moved_obj else env.obj_ids['fixed'][0]) for obj in objs]
-    # print(f"last_moved_obj: {self.last_moved_obj}")
+    print(f"last_moved_obj: {self.last_moved_obj}")
     # container_z = p.getBasePositionAndOrientation(env.obj_ids['fixed'][0])[0][2]
-    container_z = 0.25
+    container_z = 0.05
     # print(f"container_z: {container_z}")
     # 检查每对物体之间的碰撞
     for i in range(len(object_ids)):
       closest_points = p.getClosestPoints(
           object_ids[i], 
           self.last_moved_obj,
-          distance=1e-3
+          distance=1e-4
       )
       for closest_point in closest_points:
+        print(f"closest_point: {closest_point}")
         # 如果碰撞，且碰撞点在容器上方，则返回 False
-        if closest_point[6][2] > container_z-0.02:
-          print(f"closest_point: {closest_point}")
+        if closest_point[6][2] > container_z-0.002:
           return False
     return True
