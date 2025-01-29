@@ -239,12 +239,15 @@ class Environment(gym.Env):
       if timeout:
         obs = self._get_obs()
         if self.task==PackingWithError:
-            return obs, 0.0, True, self.info, "timeout"
+            return obs, 0.0, True, self.info, []
         return obs, 0.0, True, self.info # obs,reward,done,info
-
+    feedback = []
     # Step simulator asynchronously until objects settle.
     while not self.is_static:
       p.stepSimulation()
+      #whf added: check for collisions
+      feedback = self.task.feedback()
+
 
     # Get task rewards.
     reward, info = self.task.reward() if action is not None else (0, {})
@@ -256,7 +259,7 @@ class Environment(gym.Env):
 
     # obj_ids = self.obj_ids['rigid']
     # obj_poses = [{"obj_id":obj_id,"pose":p.getBasePositionAndOrientation(obj_id)} for obj_id in obj_ids]
-    feedback = self.task.feedback(self)
+    # feedback = self.task.feedback(self)
     return obs, reward, done, info, feedback
 
   def close(self):

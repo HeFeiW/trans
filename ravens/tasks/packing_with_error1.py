@@ -174,45 +174,52 @@ class PackingWithError1(Task):
     OracleAgent = collections.namedtuple('OracleAgent', ['act'])
     self.last_moved_obj = None
     self.last_targ_id = None
-    def act(obs, info,feedback=True,last_act=None):  # pylint: disable=unused-argument
+    def act(obs, info,feedbacks=[]):  # pylint: disable=unused-argument
       """Calculate action."""
-      print(f"feedback: {feedback}")
-      obj_ids, _, targs, _, _, _, _, _ = self.goals[0]
-      wrong_obj_index = None
-      if feedback is True and self.last_targ_id is not None:
-        self.occupied[self.last_targ_id] = 1
-      else:
-        wrong_obj = self.last_moved_obj
-        for i in range(len(obj_ids)):
-          if obj_ids[i][0] == wrong_obj:
-            wrong_obj_index = i
-            break
-        # print(f"wrong_obj_index: {wrong_obj_index}")
-        if self.last_targ_id is not None :
-            self.match_matrix[self.last_targ_id][wrong_obj_index] = 0
-            self.match_matrix[wrong_obj_index][self.last_targ_id] = 0
-    #   print(f"self.last_moved_obj: {self.last_moved_obj}")
-    #   print(f"self.last_targ_id: {self.last_targ_id}")
-    #   print(f"self.match_matrix: {self.match_matrix}") 
 
       # Oracle uses perfect RGB-D orthographic images and segmentation masks.
       _, hmap, obj_mask = self.get_true_image(env)
+      
 
       # Unpack next goal step.
-      objs, _, targs, _, rotations, _, params, _ = self.goals[0]
-      _ , zone = params
-      zone_pose ,zone_size = zone[0]
+      objs, _, targs, replace, rotations, _, _, _ = self.goals[0]
+      # 解析feedbacks
+      for feedback in feedbacks:
+      # 解析碰撞反馈信息
+        object_a = feedback['object_a']
+        object_b = feedback['object_b']
+        position = feedback['position']
+        normal = feedback['normal']
+        force = feedback['force']
+        for i in range(len(objs)):
+          if objs[i][0] == object_a:
+            if position[2] > 0.002:
+              self.match_matrix[i,:]=0
+              self.match_matrix[:,i]=0
+              self.match_matrix[i,i]=1
+      # Match objects to targets without replacement.
+      if not replace:
+
+        # Modify a copy of the match matrix.
+        matches = self.match_matrix.copy()
+
+        # Ignore already matched objects.
+        for i in range(len(objs)):
+          object_id, (symmetry, _) = objs[i]
+          pose = p.getBasePositionAndOrientation(object_id)
+          targets_i = np.argwhere(matches[i, :]).reshape(-1)
+          for j in targets_i:
+            if self.is_match(pose, targs[j], symmetry):
+              matches[i, :] = 0
+              matches[:, j] = 0
+
       # Get objects to be picked (prioritize farthest from nearest neighbor).
       nn_dists = []
       nn_targets = []
-      print(f"self.occupied: {self.occupied}")
       for i in range(len(objs)):
         object_id, (symmetry, _) = objs[i]
         xyz, _ = p.getBasePositionAndOrientation(object_id)
-        targets_i = []
-        for j in range(len(self.occupied)):
-          if self.occupied[j] == 0 and self.match_matrix[i,j] == 1:
-            targets_i.append(j)
+        targets_i = np.argwhere(matches[i, :]).reshape(-1)
         if len(targets_i) > 0:  # pylint: disable=g-explicit-length-test
           targets_xyz = np.float32([targs[j][0] for j in targets_i])
           dists = np.linalg.norm(
@@ -220,6 +227,7 @@ class PackingWithError1(Task):
           nn = np.argmin(dists)
           nn_dists.append(dists[nn])
           nn_targets.append(targets_i[nn])
+
         # Handle ignored objects.
         else:
           nn_dists.append(0)
@@ -228,58 +236,22 @@ class PackingWithError1(Task):
 
       # Filter out matched objects.
       order = [i for i in order if nn_dists[i] > 0]
-      # 判断obj_mask中是否只有一个值
-      # 计算obj_mask的平均值
-    #   for i in range(len(objs)):
-    #     pick_m_i = np.uint8(obj_mask == objs[i][0])
-    #     if np.sum(pick_m_i) > 0:
-    #       print(f"obj{i} is in the image")
-    #     else:
-    #       print(f"obj{i} is not in the image")
-    #   print(f"order: {order}")
 
-      if len(order) == 0 and feedback is False:
-        print(f"order is empty")
-        world_to_zone = utils.invert(zone_pose)
-        print(f"zone_size:{zone_size}")
-        for i in range(len(objs)):
-            obj_id = objs[i][0]
-            obj_pose = p.getBasePositionAndOrientation(obj_id)
-            obj_to_zone = utils.multiply(world_to_zone, obj_pose)
-            print(f"obj_to_zone:{obj_to_zone[0]}")
-            if len(zone_size) > 1:
-              in_zone = np.logical_and.reduce([obj_to_zone[0][0]< zone_size[0] /2,
-                                               obj_to_zone[0][0]>-zone_size[0] /2,
-                                               obj_to_zone[0][1]< zone_size[1] /2,
-                                               obj_to_zone[0][1]>-zone_size[1] /2,
-                                               obj_to_zone[0][2]< zone_size[2] /2,
-                                               obj_to_zone[0][2]>-zone_size[2] /2,
-                                               ])
-              if in_zone == 0:
-                order.append(i)
-                targets_i.append(np.random.choice(np.argmin(self.occupied).reshape(-1)))
-                break
       pick_mask = None
       for pick_i in order:
-        if wrong_obj_index is not None:
-          pick_i = wrong_obj_index
         pick_mask = np.uint8(obj_mask == objs[pick_i][0])
 
         # Erode to avoid picking on edges.
         # pick_mask = cv2.erode(pick_mask, np.ones((3, 3), np.uint8))
-        self.last_moved_obj = objs[pick_i][0]
+
         if np.sum(pick_mask) > 0:
           break
-      
+
       # Trigger task reset if no object is visible.
       if pick_mask is None or np.sum(pick_mask) == 0:
         self.goals = []
-        self.last_moved_obj = None
-        # print(f"order: {order}")
-        # in_picture = [np.sum(np.uint8(pick_mask == objs[pick_i][0])) for pick_i in order]
-        # print(f"in_picture: {in_picture}")
         print('Object for pick is not visible. Skipping demonstration.')
-        return 
+        return
 
       # Get picking pose.
       #whf added
@@ -295,7 +267,6 @@ class PackingWithError1(Task):
 
       # Get placing pose.
       targ_pose = targs[nn_targets[pick_i]]  # pylint: disable=undefined-loop-variable
-      self.last_targ_id = nn_targets[pick_i]
       obj_pose = p.getBasePositionAndOrientation(objs[pick_i][0])  # pylint: disable=undefined-loop-variable
       if not self.sixdof:
         obj_euler = utils.quatXYZW_to_eulerXYZ(obj_pose[1])
@@ -382,11 +353,11 @@ class PackingWithError1(Task):
       reward = 0.0
 
     return reward, info
-  def feedback(self,env):
+  def feedback1(self,env):
     """检测环境中物体之间的碰撞。
     
     返回:
-        bool: True表示有碰撞发生，False表示没有碰撞
+        bool False 表示物体没有被正确放置，True表示正确放置
     """
     # 获取所有物体的ID
     if self.last_moved_obj is None:
@@ -412,3 +383,31 @@ class PackingWithError1(Task):
         if closest_point[6][2] > container_z-0.002:
           return False
     return True
+  def feedback(self,grasped_obj_id):
+    collision_info = []
+    if grasped_obj_id is not None:
+          contact_points = p.getContactPoints(grasped_obj_id)
+          if contact_points:
+              for point in contact_points:
+                  # Only record collisions where grasped object is involved
+                  if point[1] == grasped_obj_id or point[2] == grasped_obj_id:
+                      object_a = grasped_obj_id
+                      object_b = point[2] if (point[1] == grasped_obj_id) else point[1]
+                      collision_info.append({
+                          'object_a': object_a,
+                          'object_b': object_b,
+                          'position': point[5],
+                          'normal': point[7],
+                          'force': point[9]
+                      })
+    return collision_info
+  def get_grasped_object(self,env):
+    """Get the object ID currently grasped by the suction cup."""
+    # Get contact points between suction cup and other objects
+    contact_points = p.getContactPoints(env.ur5, -1, env.ee_tip)
+    
+    # Check if any contact points exist and have non-zero normal force
+    for point in contact_points:
+      if point[9] > 0:  # point[9] is the normal force
+        return point[2]  # point[2] is the object ID in contact
+    return None
