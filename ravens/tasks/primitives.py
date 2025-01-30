@@ -40,7 +40,7 @@ class PickPlace():
     """
 
     pick_pose, place_pose = pose0, pose1
-
+    picked_obj_id = None
     # Execute picking primitive.
     prepick_to_pick = ((0, 0, 0.32), (0, 0, 0, 1))
     postpick_to_pick = ((0, 0, self.height), (0, 0, 0, 1))
@@ -57,7 +57,7 @@ class PickPlace():
       timeout |= movep(targ_pose)
       if timeout:
         return True
-
+    picked_obj_id = ee.detect_obj_id()
     # Activate end effector, move up, and check picking success.
     ee.activate()
     timeout |= movep(postpick_pose, self.speed)
@@ -83,7 +83,7 @@ class PickPlace():
       ee.release()
       timeout |= movep(prepick_pose)
 
-    return timeout
+    return timeout, picked_obj_id
 
 
 def push(movej, movep, ee, pose0, pose1):  # pylint: disable=unused-argument

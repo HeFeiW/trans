@@ -231,22 +231,25 @@ class Environment(gym.Env):
     Returns:
       (obs, reward, done, info) tuple containing MDP step data.
     """
+    feedback = []
     if action is not None:
-      timeout = self.task.primitive(self.movej, self.movep, self.ee, **action)
-
+      timeout, picked_obj_id = self.task.primitive(self.movej, self.movep, self.ee, **action)
+      feedback = self.task.feedback(self, picked_obj_id)
       # Exit early if action times out. We still return an observation
       # so that we don't break the Gym API contract.
       if timeout:
         obs = self._get_obs()
         if self.task==PackingWithError:
             return obs, 0.0, True, self.info, []
-        return obs, 0.0, True, self.info # obs,reward,done,info
-    feedback = []
+        return obs, 0.0, True, self.info # obs,reward,done,info      
     # Step simulator asynchronously until objects settle.
+    cnt = 0
     while not self.is_static:
       p.stepSimulation()
+      print(f"simulation{cnt}")
+      cnt += 1
       #whf added: check for collisions
-      feedback = self.task.feedback()
+      feedback.extend(self.task.feedback(self, picked_obj_id))
 
 
     # Get task rewards.
@@ -549,9 +552,11 @@ class ContinuousEnvironment(Environment):
     return p.getLinkState(self.ur5, self.ee_tip)[0:2]
 
   def step(self, action=None):
+    feedback = []
     if action is not None:
-      timeout = self.task.primitive(self.movej, self.movep, self.ee, action)
-
+      timeout, picked_obj_id = self.task.primitive(self.movej, self.movep, self.ee, action)
+      feedback = self.task.feedback(self, picked_obj_id)
+      print(f"feedback0:{feedback}")
       # Exit early if action times out. We still return an observation
       # so that we don't break the Gym API contract.
       if timeout:
@@ -559,12 +564,16 @@ class ContinuousEnvironment(Environment):
         # if self.task==PackingWithError:
         #     feedback = self.task.feedback(self)
         #     return obs, 0.0, True, self.info, feedback
-        return obs, 0.0, True, self.info, "timeout"
-
-    # Step simulator asynchronously until objects settle.
+        return obs, 0.0, True, self.info, []
+      # Step simulator asynchronously until objects settle.
+      cnt = 0
+      # Step simulator asynchronously until objects settle.
     while not self.is_static:
       p.stepSimulation()
-
+      print(f"simulation{cnt}")
+      cnt += 1
+      #whf added: check for collisions
+      feedback.extend(self.task.feedback(self, picked_obj_id))
     # Get task rewards.
     reward, info = self.task.reward() if action is not None else (0, {})
     task_done = self.task.done()

@@ -186,6 +186,7 @@ class PackingWithError1(Task):
       # 解析feedbacks
       for feedback in feedbacks:
       # 解析碰撞反馈信息
+        print(f"feedback:{feedback}")
         object_a = feedback['object_a']
         object_b = feedback['object_b']
         position = feedback['position']
@@ -216,6 +217,7 @@ class PackingWithError1(Task):
       # Get objects to be picked (prioritize farthest from nearest neighbor).
       nn_dists = []
       nn_targets = []
+      print(f"matches:{matches}")
       for i in range(len(objs)):
         object_id, (symmetry, _) = objs[i]
         xyz, _ = p.getBasePositionAndOrientation(object_id)
@@ -383,16 +385,29 @@ class PackingWithError1(Task):
         if closest_point[6][2] > container_z-0.002:
           return False
     return True
-  def feedback(self,grasped_obj_id):
+  
+  def get_grasped_object(self,env):
+    """Get the object ID currently grasped by the suction cup."""
+    # Get contact points between suction cup and other objects
+    contact_points = p.getContactPoints(env.ee_tip, -1,)
+    print(f"contact_points:{contact_points}")
+    # Check if any contact points exist and have non-zero normal force
+    for point in contact_points:
+      if point[9] > 0:  # point[9] is the normal force
+        return point[2]  # point[2] is the object ID in contact
+    return None
+  def feedback(self,env, picked_obj_id):
+    picked_obj_id
+    print(f"picked_obj_id:{picked_obj_id}")
     collision_info = []
-    if grasped_obj_id is not None:
-          contact_points = p.getContactPoints(grasped_obj_id)
+    if picked_obj_id is not None:
+          contact_points = p.getContactPoints(picked_obj_id)
           if contact_points:
               for point in contact_points:
                   # Only record collisions where grasped object is involved
-                  if point[1] == grasped_obj_id or point[2] == grasped_obj_id:
-                      object_a = grasped_obj_id
-                      object_b = point[2] if (point[1] == grasped_obj_id) else point[1]
+                  if point[1] == picked_obj_id or point[2] == picked_obj_id:
+                      object_a = picked_obj_id
+                      object_b = point[2] if (point[1] == picked_obj_id) else point[1]
                       collision_info.append({
                           'object_a': object_a,
                           'object_b': object_b,
@@ -401,13 +416,3 @@ class PackingWithError1(Task):
                           'force': point[9]
                       })
     return collision_info
-  def get_grasped_object(self,env):
-    """Get the object ID currently grasped by the suction cup."""
-    # Get contact points between suction cup and other objects
-    contact_points = p.getContactPoints(env.ur5, -1, env.ee_tip)
-    
-    # Check if any contact points exist and have non-zero normal force
-    for point in contact_points:
-      if point[9] > 0:  # point[9] is the normal force
-        return point[2]  # point[2] is the object ID in contact
-    return None
