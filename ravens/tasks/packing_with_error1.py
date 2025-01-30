@@ -176,7 +176,7 @@ class PackingWithError1(Task):
     self.last_targ_id = None
     def act(obs, info,feedbacks=[]):  # pylint: disable=unused-argument
       """Calculate action."""
-
+      # match_matrix[i,j]==1表示i物体可以放在j的位置上
       # Oracle uses perfect RGB-D orthographic images and segmentation masks.
       _, hmap, obj_mask = self.get_true_image(env)
       
@@ -186,18 +186,15 @@ class PackingWithError1(Task):
       # 解析feedbacks
       for feedback in feedbacks:
       # 解析碰撞反馈信息
-        print(f"feedback:{feedback}")
-        object_a = feedback['object_a']
-        object_b = feedback['object_b']
+        # print(f"feedback:{feedback}")
+        picked_obj_id = feedback['object_a']
         position = feedback['position']
-        normal = feedback['normal']
-        force = feedback['force']
         for i in range(len(objs)):
-          if objs[i][0] == object_a:
-            if position[2] > 0.002:
-              self.match_matrix[i,:]=0
-              self.match_matrix[:,i]=0
-              self.match_matrix[i,i]=1
+          if objs[i][0] == picked_obj_id:
+            if position[2] > 0.001:
+              print(f"obj{i} cant be placed at targ{self.last_targ_id}")
+              self.match_matrix[i,self.last_targ_id]=0
+            #   self.match_matrix[i,i]=1
       # Match objects to targets without replacement.
       if not replace:
 
@@ -211,13 +208,14 @@ class PackingWithError1(Task):
           targets_i = np.argwhere(matches[i, :]).reshape(-1)
           for j in targets_i:
             if self.is_match(pose, targs[j], symmetry):
+              print(f"obj_index({i}) is already matched")
               matches[i, :] = 0
               matches[:, j] = 0
 
       # Get objects to be picked (prioritize farthest from nearest neighbor).
       nn_dists = []
       nn_targets = []
-      print(f"matches:{matches}")
+      print(f"matches:\n{matches}")
       for i in range(len(objs)):
         object_id, (symmetry, _) = objs[i]
         xyz, _ = p.getBasePositionAndOrientation(object_id)
@@ -268,6 +266,7 @@ class PackingWithError1(Task):
       pick_pose = (np.asarray(pick_pos), np.asarray((0, 0, 0, 1)))
 
       # Get placing pose.
+      self.last_targ_id = nn_targets[pick_i]
       targ_pose = targs[nn_targets[pick_i]]  # pylint: disable=undefined-loop-variable
       obj_pose = p.getBasePositionAndOrientation(objs[pick_i][0])  # pylint: disable=undefined-loop-variable
       if not self.sixdof:
@@ -386,16 +385,6 @@ class PackingWithError1(Task):
           return False
     return True
   
-  def get_grasped_object(self,env):
-    """Get the object ID currently grasped by the suction cup."""
-    # Get contact points between suction cup and other objects
-    contact_points = p.getContactPoints(env.ee_tip, -1,)
-    print(f"contact_points:{contact_points}")
-    # Check if any contact points exist and have non-zero normal force
-    for point in contact_points:
-      if point[9] > 0:  # point[9] is the normal force
-        return point[2]  # point[2] is the object ID in contact
-    return None
   def feedback(self,env, picked_obj_id):
     picked_obj_id
     print(f"picked_obj_id:{picked_obj_id}")

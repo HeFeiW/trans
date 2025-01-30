@@ -556,7 +556,6 @@ class ContinuousEnvironment(Environment):
     if action is not None:
       timeout, picked_obj_id = self.task.primitive(self.movej, self.movep, self.ee, action)
       feedback = self.task.feedback(self, picked_obj_id)
-      print(f"feedback0:{feedback}")
       # Exit early if action times out. We still return an observation
       # so that we don't break the Gym API contract.
       if timeout:
