@@ -243,11 +243,8 @@ class Environment(gym.Env):
             return obs, 0.0, True, self.info, []
         return obs, 0.0, True, self.info # obs,reward,done,info      
     # Step simulator asynchronously until objects settle.
-    cnt = 0
     while not self.is_static:
       p.stepSimulation()
-      print(f"simulation{cnt}")
-      cnt += 1
       #whf added: check for collisions
       feedback.extend(self.task.feedback(self, picked_obj_id))
 

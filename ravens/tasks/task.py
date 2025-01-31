@@ -307,7 +307,7 @@ class Task():
     """Check if pose0 and pose1 match within a threshold."""
 
     # Get translational error.
-    diff_pos = np.float32(pose0[0][:3]) - np.float32(pose1[0][:3])
+    diff_pos = np.float32(pose0[0][:2]) - np.float32(pose1[0][:2])
     dist_pos = np.linalg.norm(diff_pos)
 
     # Get rotational error around z-axis (account for symmetries).
