@@ -194,7 +194,7 @@ class PackingWithError1(Task):
         for i in range(len(objs)):
           if objs[i][0] == picked_obj_id:
             if position[2] > 0.001:
-              print(f"obj{i} cant be placed at targ{self.last_targ_id}")
+            #   print(f"obj{i} cant be placed at targ{self.last_targ_id}")
               obj_id_to_correct = i
               self.match_matrix[i,self.last_targ_id]=0
               break
@@ -213,14 +213,14 @@ class PackingWithError1(Task):
           targets_i = np.argwhere(matches[i, :]).reshape(-1)
           for j in targets_i:
             if self.is_match(pose, targs[j], symmetry):
-              print(f"obj_index({i}) is already matched")
+            #   print(f"obj_index({i}) is already matched")
               matches[i, :] = 0
               matches[:, j] = 0
 
       # Get objects to be picked (prioritize farthest from nearest neighbor).
       nn_dists = []
       nn_targets = []
-      print(f"matches:\n{matches}")
+    #   print(f"matches:\n{matches}")
       for i in range(len(objs)):
         object_id, (symmetry, _) = objs[i]
         xyz, _ = p.getBasePositionAndOrientation(object_id)
@@ -243,7 +243,7 @@ class PackingWithError1(Task):
       order = [i for i in order if nn_dists[i] > 0]
 
       pick_mask = None
-      print(f"order:{order}")
+    #   print(f"order:{order}")
       for pick_i in order:
         if objs[pick_i][0] == self.last_moved_obj:
           self.operation_cnt +=1
@@ -257,7 +257,7 @@ class PackingWithError1(Task):
           continue
         pick_mask = np.uint8(obj_mask == objs[pick_i][0])
         self.last_moved_obj = pick_i
-        print(f"pick obj index: {pick_i}")
+        # print(f"pick obj index: {pick_i}")
         # Erode to avoid picking on edges.
         # pick_mask = cv2.erode(pick_mask, np.ones((3, 3), np.uint8))
 
@@ -284,7 +284,7 @@ class PackingWithError1(Task):
 
       # Get placing pose.
       self.last_targ_id = nn_targets[pick_i]
-      print(f"targ index: {self.last_targ_id}")
+    #   print(f"targ index: {self.last_targ_id}")
       targ_pose = targs[nn_targets[pick_i]]  # pylint: disable=undefined-loop-variable
       obj_pose = p.getBasePositionAndOrientation(objs[pick_i][0])  # pylint: disable=undefined-loop-variable
       if not self.sixdof:

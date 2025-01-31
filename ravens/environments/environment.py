@@ -239,9 +239,7 @@ class Environment(gym.Env):
       # so that we don't break the Gym API contract.
       if timeout:
         obs = self._get_obs()
-        if self.task==PackingWithError:
-            return obs, 0.0, True, self.info, []
-        return obs, 0.0, True, self.info # obs,reward,done,info      
+        return obs, 0.0, True, self.info, [] # obs,reward,done,info      
     # Step simulator asynchronously until objects settle.
     while not self.is_static:
       p.stepSimulation()
