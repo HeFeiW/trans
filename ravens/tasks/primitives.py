@@ -56,7 +56,7 @@ class PickPlace():
       targ_pose = utils.multiply(targ_pose, delta)
       timeout |= movep(targ_pose)
       if timeout:
-        return True
+        return True, None
     picked_obj_id = ee.detect_obj_id()
     # Activate end effector, move up, and check picking success.
     ee.activate()
